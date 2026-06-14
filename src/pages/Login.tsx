@@ -10,6 +10,7 @@ import {
   Fingerprint,
   Copy,
   Info,
+  Github,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button, Field, Input, cn } from '../components/ui';
@@ -204,6 +205,18 @@ export default function Login() {
             </span>
           </div>
         </div>
+
+        <p className="mt-5 text-center text-xs text-[var(--color-ink-dim)]">
+          <a
+            href="https://github.com/paznoiro/zitadel-admin-console"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 transition hover:text-white"
+          >
+            <Github className="size-3.5" />
+            Open source on GitHub
+          </a>
+        </p>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   X,
   Activity,
   ShieldCheck,
+  Github,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from './ui';
@@ -100,6 +101,15 @@ function Brand() {
         <p className="text-sm font-semibold tracking-wide text-white">ZITADEL</p>
         <p className="text-[11px] text-[var(--color-ink-dim)]">Admin Console</p>
       </div>
+      <a
+        href="https://github.com/paznoiro/zitadel-admin-console"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="ml-auto text-[var(--color-ink-dim)] transition hover:text-white"
+        title="View on GitHub"
+      >
+        <Github className="size-5" />
+      </a>
     </div>
   );
 }
