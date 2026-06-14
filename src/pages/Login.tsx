@@ -1,0 +1,248 @@
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  KeyRound,
+  Globe,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  Copy,
+  Info,
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Button, Field, Input, cn } from '../components/ui';
+import { ApiError } from '../api/client';
+import { beginLogin, redirectUri } from '../api/oauth';
+import { useToast } from '../components/Toast';
+
+type Mode = 'pat' | 'sso';
+
+export default function Login() {
+  const { connect } = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [mode, setMode] = useState<Mode>('pat');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [token, setToken] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmitPat(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await connect(baseUrl, token);
+      navigate('/', { replace: true });
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.status === 401 || err.status === 403
+            ? 'Authentication failed — check the token has the right permissions.'
+            : err.message
+          : (err as Error).message;
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onSubmitSso(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      // Redirects away to the instance's hosted login; returns via /callback.
+      await beginLogin(baseUrl, clientId);
+    } catch (err) {
+      setError((err as Error).message);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="grid min-h-screen place-items-center p-6">
+      <div className="w-full max-w-md fade-up">
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="mb-4 grid size-16 place-items-center rounded-2xl bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-[0_12px_40px_-10px_rgba(124,92,255,0.8)]">
+            <svg viewBox="0 0 32 32" className="size-9">
+              <path d="M9 22 L16 8 L23 22 Z" fill="white" fillOpacity="0.95" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">ZITADEL Admin Console</h1>
+          <p className="mt-1.5 text-sm text-[var(--color-ink-dim)]">
+            Connect to your instance to manage it.
+          </p>
+        </div>
+
+        <div className="glass p-6">
+          {/* Mode toggle */}
+          <div className="mb-5 flex gap-1 rounded-xl border border-white/10 bg-white/4 p-1">
+            {(
+              [
+                ['pat', 'Access Token', KeyRound],
+                ['sso', 'Single Sign-On', Fingerprint],
+              ] as const
+            ).map(([m, label, Icon]) => (
+              <button
+                key={m}
+                onClick={() => {
+                  setMode(m);
+                  setError(null);
+                }}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition',
+                  mode === m
+                    ? 'bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                    : 'text-[var(--color-ink-dim)] hover:text-white',
+                )}
+              >
+                <Icon className="size-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <Field label="Server URL" required hint="e.g. https://my-instance.zitadel.cloud">
+            <div className="relative">
+              <Globe className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
+              <Input
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://your-instance.zitadel.cloud"
+                className="pl-9"
+                autoComplete="url"
+                autoFocus
+              />
+            </div>
+          </Field>
+
+          {mode === 'pat' ? (
+            <form onSubmit={onSubmitPat} className="mt-4 space-y-4">
+              <Field
+                label="Personal Access Token (PAT)"
+                required
+                hint="Used as a Bearer token for every request."
+              >
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
+                  <Input
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="paste token…"
+                    className="px-9"
+                    type={showToken ? 'text' : 'password'}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--color-ink-dim)] hover:text-white"
+                    tabIndex={-1}
+                  >
+                    {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </Field>
+
+              {error && <ErrorNote text={error} />}
+
+              <Button
+                type="submit"
+                loading={loading}
+                disabled={!baseUrl.trim() || !token.trim()}
+                className="w-full"
+                icon={<ArrowRight className="size-4" />}
+              >
+                {loading ? 'Connecting…' : 'Go'}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={onSubmitSso} className="mt-4 space-y-4">
+              <Field
+                label="Client ID"
+                required
+                hint="From a PKCE-enabled application in your instance."
+              >
+                <div className="relative">
+                  <Fingerprint className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
+                  <Input
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="1234567890@project"
+                    className="pl-9"
+                    autoComplete="off"
+                  />
+                </div>
+              </Field>
+
+              <RedirectHint />
+
+              {error && <ErrorNote text={error} />}
+
+              <Button
+                type="submit"
+                loading={loading}
+                disabled={!baseUrl.trim() || !clientId.trim()}
+                className="w-full"
+                icon={<Fingerprint className="size-4" />}
+              >
+                {loading ? 'Redirecting…' : 'Login with ZITADEL'}
+              </Button>
+            </form>
+          )}
+
+          <div className="mt-5 flex items-start gap-2 rounded-xl bg-white/4 px-3 py-2.5 text-[11px] text-[var(--color-ink-dim)]">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-[var(--color-good)]" />
+            <span>
+              Credentials stay in your browser and are sent only to the instance you specify. SSO uses
+              the OAuth2 Authorization Code + PKCE flow — no client secret is stored.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  function RedirectHint() {
+    const uri = redirectUri();
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/4 px-3 py-2.5 text-[11px] text-[var(--color-ink-dim)]">
+        <p className="mb-1.5 flex items-center gap-1.5 font-medium text-[var(--color-ink)]">
+          <Info className="size-3.5" /> Register this redirect URI on your app
+        </p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] text-[var(--color-ink)]">
+            {uri}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(uri);
+              toast.success('Redirect URI copied');
+            }}
+            className="rounded-md p-1.5 text-[var(--color-ink-dim)] hover:bg-white/10 hover:text-white"
+          >
+            <Copy className="size-3.5" />
+          </button>
+        </div>
+        <p className="mt-1.5">
+          Use an app of type <strong>User Agent (SPA)</strong> with auth method{' '}
+          <strong>PKCE / None</strong>. Enable development mode for http/localhost URIs.
+        </p>
+      </div>
+    );
+  }
+}
+
+function ErrorNote({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+      {text}
+    </div>
+  );
+}
