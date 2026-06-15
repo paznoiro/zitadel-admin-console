@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, useEffect, type ReactNode } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 // org-header threading removed: project/app/role calls run in the token's own org
@@ -20,7 +20,10 @@ import {
   XCircle,
   Loader2,
   CircleDashed,
+  Link2,
+  ExternalLink,
 } from 'lucide-react';
+import { getSession } from '../api/session';
 import { deleteRole, listRoles, createRole, updateRole } from '../api/projects';
 import {
   generateRolesTemplate,
@@ -143,6 +146,7 @@ function AppsTab({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editApp, setEditApp] = useState<Application | null>(null);
+  const [endpointsApp, setEndpointsApp] = useState<Application | null>(null);
   const [credentials, setCredentials] = useState<
     (CreateOIDCAppResult | CreateAPIAppResult) & { name: string }
   >();
@@ -219,6 +223,7 @@ function AppsTab({ projectId }: { projectId: string }) {
               key={a.id}
               app={a}
               onEdit={() => setEditApp(a)}
+              onEndpoints={a.type === 'OIDC' ? () => setEndpointsApp(a) : undefined}
               onDelete={() => onDelete(a.id, a.name)}
             />
           ))}
@@ -250,6 +255,10 @@ function AppsTab({ projectId }: { projectId: string }) {
         />
       )}
 
+      {endpointsApp && (
+        <OIDCEndpointsModal app={endpointsApp} onClose={() => setEndpointsApp(null)} />
+      )}
+
       <Modal
         open={!!credentials}
         onClose={() => setCredentials(undefined)}
@@ -273,10 +282,12 @@ function AppsTab({ projectId }: { projectId: string }) {
 function AppCard({
   app,
   onEdit,
+  onEndpoints,
   onDelete,
 }: {
   app: Application;
   onEdit: () => void;
+  onEndpoints?: () => void;
   onDelete: () => void;
 }) {
   const toast = useToast();
@@ -298,6 +309,15 @@ function AppCard({
         <div className="flex items-center gap-1.5">
           <Badge tone="accent">{app.type}</Badge>
           {o && <Badge>{OIDC_APP_TYPE_LABELS[o.appType] ?? o.appType}</Badge>}
+          {onEndpoints && (
+            <button
+              onClick={onEndpoints}
+              title="OIDC endpoints"
+              className="rounded-lg p-1.5 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-sky-300 group-hover:opacity-100"
+            >
+              <Link2 className="size-4" />
+            </button>
+          )}
           <button
             onClick={onEdit}
             title="Edit application"
@@ -706,6 +726,141 @@ function EditAppForm({
               </Select>
             </Field>
           </Section>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ---- OIDC endpoints modal --------------------------------------------------
+
+interface DiscoveryDoc {
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+  userinfo_endpoint?: string;
+  end_session_endpoint?: string;
+  device_authorization_endpoint?: string;
+  jwks_uri?: string;
+}
+
+function EndpointRow({ label, value }: { label: string; value: string }) {
+  const toast = useToast();
+  if (!value) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+          {label}
+        </p>
+        <p className="truncate font-mono text-xs text-[var(--color-ink)]" title={value}>
+          {value}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded p-1 text-[var(--color-ink-dim)] transition hover:text-sky-300"
+          title="Open in new tab"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="size-3.5" />
+        </a>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(value);
+            toast.success(`${label} copied`);
+          }}
+          className="rounded p-1 text-[var(--color-ink-dim)] transition hover:text-white"
+          title="Copy"
+        >
+          <Copy className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OIDCEndpointsModal({ app, onClose }: { app: Application; onClose: () => void }) {
+  const toast = useToast();
+  const baseUrl = getSession()?.baseUrl ?? '';
+  const discoveryUrl = `${baseUrl}/.well-known/openid-configuration`;
+
+  const [doc, setDoc] = useState<DiscoveryDoc | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(discoveryUrl)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: DiscoveryDoc) => { setDoc(d); setLoading(false); })
+      .catch((e: Error) => { setFetchError(e.message); setLoading(false); });
+  }, [discoveryUrl]);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="OIDC Endpoints"
+      description={app.name}
+      size="lg"
+      footer={
+        <Button
+          variant="ghost"
+          onClick={() => {
+            const lines = [
+              `Client ID: ${app.clientId ?? ''}`,
+              `Discovery: ${discoveryUrl}`,
+              ...(doc ? [
+                `Authorization: ${doc.authorization_endpoint ?? ''}`,
+                `Token: ${doc.token_endpoint ?? ''}`,
+                `Userinfo: ${doc.userinfo_endpoint ?? ''}`,
+                `End Session: ${doc.end_session_endpoint ?? ''}`,
+                `Device Authorization: ${doc.device_authorization_endpoint ?? ''}`,
+                `JWKS URI: ${doc.jwks_uri ?? ''}`,
+              ] : []),
+            ];
+            navigator.clipboard.writeText(lines.join('\n'));
+            toast.success('All endpoints copied');
+          }}
+          icon={<Copy className="size-4" />}
+        >
+          Copy all
+        </Button>
+      }
+    >
+      <div className="space-y-2">
+        {/* Client ID */}
+        {app.clientId && (
+          <EndpointRow label="Client ID" value={app.clientId} />
+        )}
+
+        {/* Discovery (always shown, derived from baseUrl) */}
+        <EndpointRow label="Discovery Endpoint" value={discoveryUrl} />
+
+        {loading && (
+          <div className="flex items-center gap-2 py-3 text-sm text-[var(--color-ink-dim)]">
+            <Loader2 className="size-4 animate-spin" />
+            Fetching discovery document…
+          </div>
+        )}
+
+        {fetchError && (
+          <p className="rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            Could not fetch discovery document: {fetchError}
+          </p>
+        )}
+
+        {doc && (
+          <>
+            <EndpointRow label="Authorization Endpoint" value={doc.authorization_endpoint ?? ''} />
+            <EndpointRow label="Token Endpoint" value={doc.token_endpoint ?? ''} />
+            <EndpointRow label="Userinfo Endpoint" value={doc.userinfo_endpoint ?? ''} />
+            <EndpointRow label="End Session / Logout Endpoint" value={doc.end_session_endpoint ?? ''} />
+            <EndpointRow label="Device Authorization Endpoint" value={doc.device_authorization_endpoint ?? ''} />
+            <EndpointRow label="JWKS URI" value={doc.jwks_uri ?? ''} />
+          </>
         )}
       </div>
     </Modal>
