@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ConfirmProvider } from './components/Confirm';
+import { DevHintsProvider } from './context/DevHintsContext';
 import { Layout } from './components/Layout';
 import Login from './pages/Login';
 import Callback from './pages/Callback';
@@ -29,6 +30,7 @@ export default function App() {
   }
 
   return (
+    <DevHintsProvider>
     <ConfirmProvider>
       <Layout>
         <Routes>
@@ -47,5 +49,6 @@ export default function App() {
         </Routes>
       </Layout>
     </ConfirmProvider>
+    </DevHintsProvider>
   );
 }

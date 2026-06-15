@@ -7,6 +7,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useDevHints } from '../context/DevHintsContext';
 
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
@@ -22,6 +23,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: Size;
   loading?: boolean;
   icon?: ReactNode;
+  hint?: string | string[];
 }
 
 const variantClasses: Record<Variant, string> = {
@@ -35,6 +37,33 @@ const variantClasses: Record<Variant, string> = {
     'text-white bg-gradient-to-br from-[#f43f5e] to-[#fb7185] hover:brightness-110 border border-white/10',
 };
 
+function HintTooltip({ hints }: { hints: string[] }) {
+  return (
+    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 -translate-x-1/2 pb-[5px] opacity-0 transition-opacity duration-100 group-hover:opacity-100">
+      <span className="block whitespace-nowrap rounded-lg border border-sky-400/30 bg-[#090d1e] px-2.5 py-2 shadow-xl shadow-black/50">
+        {hints.map((h, i) => (
+          <code key={i} className="block font-mono text-[11px] leading-relaxed text-sky-300">
+            {h}
+          </code>
+        ))}
+      </span>
+      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 border-x-[5px] border-x-transparent border-t-[5px] border-t-[#090d1e]" />
+    </span>
+  );
+}
+
+export function HintWrap({ hint, children }: { hint: string | string[]; children: ReactNode }) {
+  const { showHints } = useDevHints();
+  const hints = Array.isArray(hint) ? hint : [hint];
+  if (!showHints) return <>{children}</>;
+  return (
+    <span className="group relative inline-flex">
+      {children}
+      <HintTooltip hints={hints} />
+    </span>
+  );
+}
+
 export function Button({
   variant = 'primary',
   size = 'md',
@@ -43,9 +72,14 @@ export function Button({
   className,
   children,
   disabled,
+  hint,
   ...rest
 }: ButtonProps) {
-  return (
+  const { showHints } = useDevHints();
+  const hints = hint ? (Array.isArray(hint) ? hint : [hint]) : [];
+  const hasTooltip = showHints && hints.length > 0;
+
+  const btn = (
     <button
       {...rest}
       disabled={disabled || loading}
@@ -59,6 +93,15 @@ export function Button({
       {loading ? <Loader2 className="size-4 animate-spin" /> : icon}
       {children}
     </button>
+  );
+
+  if (!hasTooltip) return btn;
+
+  return (
+    <span className="group relative inline-flex">
+      {btn}
+      <HintTooltip hints={hints} />
+    </span>
   );
 }
 

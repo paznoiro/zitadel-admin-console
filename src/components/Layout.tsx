@@ -16,8 +16,10 @@ import {
   Activity,
   ShieldCheck,
   Github,
+  Terminal,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDevHints } from '../context/DevHintsContext';
 import { cn } from './ui';
 
 const NAV = [
@@ -138,6 +140,7 @@ function ConnectionFooter() {
 }
 
 function TopBar({ onMenu, mobileOpen }: { onMenu: () => void; mobileOpen: boolean }) {
+  const { showHints, toggle } = useDevHints();
   return (
     <header className="sticky top-0 z-20 px-4 py-3 md:px-8">
       <div className="glass-soft glass flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
@@ -150,6 +153,20 @@ function TopBar({ onMenu, mobileOpen }: { onMenu: () => void; mobileOpen: boolea
         <div className="hidden text-sm text-[var(--color-ink-dim)] md:block">
           Identity & Access Management
         </div>
+        {showHints && (
+          <button
+            onClick={toggle}
+            title="Ctrl+1 to toggle API hints off"
+            className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 transition hover:bg-sky-400/20"
+          >
+            <span className="relative flex size-1.5 shrink-0">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-400 opacity-75" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-sky-400" />
+            </span>
+            <Terminal className="size-3" />
+            API hints ON
+          </button>
+        )}
         <OrgSwitcher />
       </div>
     </header>

@@ -29,6 +29,7 @@ import {
   EmptyState,
   ErrorBox,
   Field,
+  HintWrap,
   Input,
   PageHeader,
   Spinner,
@@ -273,13 +274,15 @@ export default function Organizations() {
                   >
                     <Pencil className="size-4" />
                   </button>
-                  <button
-                    onClick={() => onDelete(o.id, o.name)}
-                    className="rounded-lg p-2 text-[var(--color-ink-dim)] transition hover:bg-rose-500/10 hover:text-rose-300"
-                    title="Delete organization"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+                  <HintWrap hint="DELETE /v2beta/organizations/{id}">
+                    <button
+                      onClick={() => onDelete(o.id, o.name)}
+                      className="rounded-lg p-2 text-[var(--color-ink-dim)] transition hover:bg-rose-500/10 hover:text-rose-300"
+                      title="Delete organization"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </HintWrap>
                 </div>
               </div>
             );
@@ -301,6 +304,7 @@ export default function Organizations() {
               loading={createM.isPending}
               disabled={!name.trim()}
               onClick={() => createM.mutate()}
+              hint="POST /v2beta/organizations"
             >
               Create
             </Button>
@@ -332,6 +336,7 @@ export default function Organizations() {
               loading={updateM.isPending}
               disabled={!editName.trim() || editName.trim() === editTarget?.name}
               onClick={() => updateM.mutate()}
+              hint="POST /v2beta/organizations/{id}"
             >
               Save
             </Button>

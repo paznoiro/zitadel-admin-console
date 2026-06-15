@@ -54,6 +54,7 @@ import {
   EmptyState,
   ErrorBox,
   Field,
+  HintWrap,
   Input,
   PageHeader,
   Select,
@@ -332,13 +333,15 @@ function AppCard({
           >
             <Pencil className="size-4" />
           </button>
-          <button
-            onClick={onDelete}
-            title="Delete application"
-            className="rounded-lg p-1.5 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
-          >
-            <Trash2 className="size-4" />
-          </button>
+          <HintWrap hint="POST app.v2/DeleteApplication">
+            <button
+              onClick={onDelete}
+              title="Delete application"
+              className="rounded-lg p-1.5 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </HintWrap>
         </div>
       </div>
 
@@ -577,7 +580,15 @@ function EditAppForm({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saveM.isPending} disabled={!name.trim()} onClick={() => saveM.mutate()}>
+          <Button
+            loading={saveM.isPending}
+            disabled={!name.trim()}
+            onClick={() => saveM.mutate()}
+            hint={[
+              'POST app.v2/UpdateApplication (name, if changed)',
+              `POST app.v2/UpdateApplication (${app.type} config)`,
+            ]}
+          >
             Save changes
           </Button>
         </>
@@ -946,7 +957,12 @@ function CreateAppModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={createM.isPending} disabled={!name.trim()} onClick={() => createM.mutate()}>
+          <Button
+            loading={createM.isPending}
+            disabled={!name.trim()}
+            onClick={() => createM.mutate()}
+            hint="POST app.v2/CreateApplication"
+          >
             Create
           </Button>
         </>
@@ -1180,13 +1196,15 @@ function RolesTab({ projectId }: { projectId: string }) {
               >
                 <Pencil className="size-4" />
               </button>
-              <button
-                onClick={() => onDelete(r.key)}
-                title="Remove role"
-                className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
-              >
-                <Trash2 className="size-4" />
-              </button>
+              <HintWrap hint="POST project.v2/RemoveProjectRole">
+                <button
+                  onClick={() => onDelete(r.key)}
+                  title="Remove role"
+                  className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </HintWrap>
             </div>
           ))}
         </div>
@@ -1205,6 +1223,7 @@ function RolesTab({ projectId }: { projectId: string }) {
               loading={createM.isPending}
               disabled={!form.roleKey.trim()}
               onClick={() => createM.mutate()}
+              hint="POST project.v2/AddProjectRole"
             >
               Add
             </Button>
@@ -1256,7 +1275,11 @@ function RolesTab({ projectId }: { projectId: string }) {
             <Button variant="ghost" onClick={() => setEditTarget(null)}>
               Cancel
             </Button>
-            <Button loading={updateM.isPending} onClick={() => updateM.mutate()}>
+            <Button
+              loading={updateM.isPending}
+              onClick={() => updateM.mutate()}
+              hint="POST project.v2/UpdateProjectRole"
+            >
               Save
             </Button>
           </>
