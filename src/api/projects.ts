@@ -126,11 +126,11 @@ function normalizeRole(raw: Record<string, unknown>): ProjectRole {
   };
 }
 
-export async function listRoles(projectId: string): Promise<ProjectRole[]> {
+export async function listRoles(projectId: string, orgId?: string): Promise<ProjectRole[]> {
   const res = await api.post<RoleListResponse>(
     EP.roleList(),
     { projectId },
-    { extraHeaders: CONNECT_HDR },
+    { extraHeaders: CONNECT_HDR, orgId },
   );
   return (res.projectRoles ?? []).map(normalizeRole);
 }
@@ -144,7 +144,7 @@ export interface CreateRoleInput {
 export async function createRole(
   projectId: string,
   input: CreateRoleInput,
-  _orgId?: string,
+  orgId?: string,
 ): Promise<void> {
   await api.post(
     EP.roleAdd(),
@@ -154,7 +154,7 @@ export async function createRole(
       displayName: input.displayName || input.roleKey,
       ...(input.group ? { group: input.group } : {}),
     },
-    { extraHeaders: CONNECT_HDR },
+    { extraHeaders: CONNECT_HDR, orgId },
   );
 }
 

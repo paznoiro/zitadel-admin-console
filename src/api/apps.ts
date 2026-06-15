@@ -78,10 +78,11 @@ function normalizeApp(raw: Record<string, unknown>): Application {
   };
 }
 
-export async function listApps(projectId: string): Promise<Application[]> {
+export async function listApps(projectId: string, orgId?: string): Promise<Application[]> {
   const body = { filters: [{ projectIdFilter: { projectId } }] };
   const res = await api.post<AppListResponse>(EP.appList(), body, {
     extraHeaders: { 'Connect-Protocol-Version': '1' },
+    orgId,
   });
   return (res.applications ?? []).map(normalizeApp);
 }
@@ -106,7 +107,7 @@ export interface CreateOIDCAppResult {
 export async function createOIDCApp(
   projectId: string,
   input: CreateOIDCAppInput,
-  _orgId?: string,
+  orgId?: string,
 ): Promise<CreateOIDCAppResult> {
   const body = {
     projectId,
@@ -128,6 +129,7 @@ export async function createOIDCApp(
   };
   const res = await api.post<Record<string, unknown>>(EP.appV2Create(), body, {
     extraHeaders: { 'Connect-Protocol-Version': '1' },
+    orgId,
   });
   const oidcCfg = res.oidcConfiguration as Record<string, unknown> | undefined;
   return {
@@ -151,7 +153,7 @@ export interface CreateAPIAppResult {
 export async function createAPIApp(
   projectId: string,
   input: CreateAPIAppInput,
-  _orgId?: string,
+  orgId?: string,
 ): Promise<CreateAPIAppResult> {
   const body = {
     projectId,
@@ -162,6 +164,7 @@ export async function createAPIApp(
   };
   const res = await api.post<Record<string, unknown>>(EP.appV2Create(), body, {
     extraHeaders: { 'Connect-Protocol-Version': '1' },
+    orgId,
   });
   const apiCfg = res.apiConfiguration as Record<string, unknown> | undefined;
   return {

@@ -67,8 +67,8 @@ export async function duplicateOrganization(
     throw err;
   }
 
-  // 2. Read the source projects (token's own org).
-  const sourceProjects = await listProjects();
+  // 2. Read the source projects scoped to the source org.
+  const sourceProjects = await listProjects(undefined, opts.sourceOrgId);
 
   for (const project of sourceProjects) {
     const pStep = add({ id: `p:${project.id}`, label: `Project “${project.name}”`, kind: 'project' });
@@ -96,7 +96,7 @@ export async function duplicateOrganization(
     if (opts.includeRoles) {
       let roles: Awaited<ReturnType<typeof listRoles>> = [];
       try {
-        roles = await listRoles(project.id);
+        roles = await listRoles(project.id, opts.sourceOrgId);
       } catch (err) {
         add({
           id: `r:${project.id}:_`,
@@ -130,7 +130,7 @@ export async function duplicateOrganization(
     if (opts.includeApps) {
       let apps: Awaited<ReturnType<typeof listApps>> = [];
       try {
-        apps = await listApps(project.id);
+        apps = await listApps(project.id, opts.sourceOrgId);
       } catch (err) {
         add({
           id: `a:${project.id}:_`,
@@ -153,30 +153,28 @@ export async function duplicateOrganization(
         set(aStep, 'running');
         try {
           if (app.type === 'OIDC') {
-            const oidc = (app.raw as Record<string, unknown>)?.oidcConfig as
-              | Record<string, unknown>
-              | undefined;
+            // Use app.oidc (normalized by listApps) — raw.oidcConfig is undefined
+            // after v2 migration; v2 uses oidcConfiguration which normalizeApp maps to app.oidc.
+            const oidc = app.oidc;
             await createOIDCApp(
               newProjectId,
               {
                 name: app.name,
-                redirectUris: (oidc?.redirectUris as string[]) ?? [],
-                postLogoutRedirectUris: (oidc?.postLogoutRedirectUris as string[]) ?? [],
-                appType: oidc?.appType as string | undefined,
-                authMethodType: oidc?.authMethodType as string | undefined,
-                grantTypes: oidc?.grantTypes as string[] | undefined,
-                responseTypes: oidc?.responseTypes as string[] | undefined,
-                devMode: oidc?.devMode as boolean | undefined,
+                redirectUris: oidc?.redirectUris ?? [],
+                postLogoutRedirectUris: oidc?.postLogoutRedirectUris ?? [],
+                appType: oidc?.appType,
+                authMethodType: oidc?.authMethodType,
+                grantTypes: oidc?.grantTypes,
+                responseTypes: oidc?.responseTypes,
+                devMode: oidc?.devMode,
               },
               newOrgId,
             );
           } else {
-            const apiCfg = (app.raw as Record<string, unknown>)?.apiConfig as
-              | Record<string, unknown>
-              | undefined;
+            // app.api is normalized from v2 apiConfiguration
             await createAPIApp(
               newProjectId,
-              { name: app.name, authMethodType: apiCfg?.authMethodType as string | undefined },
+              { name: app.name, authMethodType: app.api?.authMethodType },
               newOrgId,
             );
           }
