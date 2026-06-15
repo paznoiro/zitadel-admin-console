@@ -145,7 +145,12 @@ export async function request<T = unknown>(
   };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (!opts.anonymous && session) headers['Authorization'] = `Bearer ${session.token}`;
-  if (opts.orgId) headers['x-zitadel-orgid'] = opts.orgId;
+  // Scope every call to the active org. `session.orgId` tracks the org selected
+  // in the switcher (and is the token's own org before any switch), so this
+  // keeps project/app/role/user writes in the same org the lists read from.
+  // An explicit opts.orgId (e.g. the duplicate-org wizard) still wins.
+  const orgId = opts.orgId ?? (opts.anonymous ? undefined : session?.orgId);
+  if (orgId) headers['x-zitadel-orgid'] = orgId;
   if (opts.extraHeaders) Object.assign(headers, opts.extraHeaders);
 
   let res: Response;

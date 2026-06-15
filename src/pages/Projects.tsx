@@ -59,13 +59,29 @@ export default function Projects() {
     qc.invalidateQueries({ queryKey: ['applications'] });
   }
 
+  // ZITADEL's read projections are eventually consistent: a list refetched
+  // immediately after a write can still show the pre-write state. We patch the
+  // cache optimistically for an instant-correct UI, then reconcile with the
+  // server once the projection has caught up.
+  function patchProjectsCache(fn: (list: Project[]) => Project[]) {
+    qc.setQueriesData<Project[]>({ queryKey: ['projects'] }, (old) =>
+      old ? fn(old) : old,
+    );
+  }
+  function reconcileSoon() {
+    setTimeout(invalidateAll, 1200);
+  }
+
   const createM = useMutation({
     mutationFn: () => createProject(form, activeOrgId ?? undefined),
-    onSuccess: () => {
+    onSuccess: (created) => {
       toast.success('Project created', form.name);
       setCreating(false);
       setForm({ name: '', projectRoleAssertion: false, projectRoleCheck: false, hasProjectCheck: false });
-      invalidateAll();
+      patchProjectsCache((list) =>
+        list.some((p) => p.id === created.id) ? list : [created, ...list],
+      );
+      reconcileSoon();
     },
     onError: (e: Error) => toast.error('Could not create project', e.message),
   });
@@ -73,9 +89,13 @@ export default function Projects() {
   const updateM = useMutation({
     mutationFn: () => updateProject(editTarget!.id, editForm),
     onSuccess: () => {
+      const id = editTarget!.id;
       toast.success('Project updated', editForm.name);
       setEditTarget(null);
-      invalidateAll();
+      patchProjectsCache((list) =>
+        list.map((p) => (p.id === id ? { ...p, ...editForm } : p)),
+      );
+      reconcileSoon();
     },
     onError: (e: Error) => toast.error('Could not update project', e.message),
   });
@@ -92,9 +112,10 @@ export default function Projects() {
 
   const deleteM = useMutation({
     mutationFn: (id: string) => deleteProject(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       toast.success('Project deleted');
-      invalidateAll();
+      patchProjectsCache((list) => list.filter((p) => p.id !== id));
+      reconcileSoon();
     },
     onError: (e: Error) => toast.error('Could not delete project', e.message),
   });
