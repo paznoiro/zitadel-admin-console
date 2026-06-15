@@ -15,6 +15,7 @@ export interface CloneStep {
 export interface CloneOptions {
   sourceOrgId: string;
   newOrgName: string;
+  prefix: string;
   includeRoles: boolean;
   includeApps: boolean;
 }
@@ -69,15 +70,18 @@ export async function duplicateOrganization(
 
   // 2. Read the source projects scoped to the source org.
   const sourceProjects = await listProjects(undefined, opts.sourceOrgId);
+  const pfx = opts.prefix.trim();
+  const prefixed = (name: string) => (pfx ? `${pfx}${name}` : name);
 
   for (const project of sourceProjects) {
-    const pStep = add({ id: `p:${project.id}`, label: `Project “${project.name}”`, kind: 'project' });
+    const newProjectName = prefixed(project.name);
+    const pStep = add({ id: `p:${project.id}`, label: `Project “${newProjectName}”`, kind: 'project' });
     set(pStep, 'running');
     let newProjectId = '';
     try {
       const created = await createProject(
         {
-          name: project.name,
+          name: newProjectName,
           projectRoleAssertion: project.projectRoleAssertion,
           projectRoleCheck: project.projectRoleCheck,
           hasProjectCheck: project.hasProjectCheck,
@@ -143,7 +147,7 @@ export async function duplicateOrganization(
       for (const app of apps) {
         const aStep = add({
           id: `a:${project.id}:${app.id}`,
-          label: `App “${app.name}” (${app.type}) → ${project.name}`,
+          label: `App “${prefixed(app.name)}” (${app.type}) → ${newProjectName}`,
           kind: 'app',
         });
         if (app.type === 'SAML') {
@@ -159,7 +163,7 @@ export async function duplicateOrganization(
             await createOIDCApp(
               newProjectId,
               {
-                name: app.name,
+                name: prefixed(app.name),
                 redirectUris: oidc?.redirectUris ?? [],
                 postLogoutRedirectUris: oidc?.postLogoutRedirectUris ?? [],
                 appType: oidc?.appType,
@@ -174,7 +178,7 @@ export async function duplicateOrganization(
             // app.api is normalized from v2 apiConfiguration
             await createAPIApp(
               newProjectId,
-              { name: app.name, authMethodType: app.api?.authMethodType },
+              { name: prefixed(app.name), authMethodType: app.api?.authMethodType },
               newOrgId,
             );
           }

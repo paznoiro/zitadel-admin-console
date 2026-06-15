@@ -27,6 +27,7 @@ export default function DuplicateOrg() {
 
   const [sourceOrgId, setSourceOrgId] = useState('');
   const [newOrgName, setNewOrgName] = useState('');
+  const [prefix, setPrefix] = useState('');
   const [includeRoles, setIncludeRoles] = useState(true);
   const [includeApps, setIncludeApps] = useState(true);
   const [steps, setSteps] = useState<CloneStep[]>([]);
@@ -65,7 +66,7 @@ export default function DuplicateOrg() {
     setResultOrgId(null);
     try {
       const res = await duplicateOrganization(
-        { sourceOrgId, newOrgName: newOrgName.trim(), includeRoles, includeApps },
+        { sourceOrgId, newOrgName: newOrgName.trim(), prefix, includeRoles, includeApps },
         setSteps,
       );
       setResultOrgId(res.newOrgId);
@@ -113,6 +114,18 @@ export default function DuplicateOrg() {
               value={newOrgName}
               onChange={(e) => setNewOrgName(e.target.value)}
               placeholder="Acme Inc. (Copy)"
+              disabled={running}
+            />
+          </Field>
+
+          <Field
+            label="Name prefix"
+            hint={prefix.trim() ? `Projects & apps will be named "${prefix.trim()}…"` : 'Optional — prepended to every project and application name.'}
+          >
+            <Input
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+              placeholder="e.g. staging- or COPY_"
               disabled={running}
             />
           </Field>
