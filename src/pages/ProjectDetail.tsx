@@ -154,11 +154,20 @@ function AppsTab({ projectId }: { projectId: string }) {
 
   const deleteM = useMutation({
     mutationFn: (appId: string) => deleteApp(projectId, appId),
+    onMutate: async (appId) => {
+      await qc.cancelQueries({ queryKey: ['apps', projectId] });
+      const prev = qc.getQueryData<Application[]>(['apps', projectId]);
+      qc.setQueryData<Application[]>(['apps', projectId], (old) => (old ?? []).filter((a) => a.id !== appId));
+      return { prev };
+    },
+    onError: (e: Error, _appId, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['apps', projectId], ctx.prev);
+      toast.error('Could not delete application', e.message);
+    },
     onSuccess: () => {
       toast.success('Application deleted');
       qc.invalidateQueries({ queryKey: ['apps', projectId] });
     },
-    onError: (e: Error) => toast.error('Could not delete application', e.message),
   });
 
   async function onDelete(appId: string, name: string) {
@@ -220,11 +229,11 @@ function AppsTab({ projectId }: { projectId: string }) {
         <CreateAppModal
           projectId={projectId}
           onClose={() => setCreating(false)}
-          onCreated={(res, name) => {
+          onCreated={async (res, name) => {
             setCreating(false);
-            qc.invalidateQueries({ queryKey: ['apps', projectId] });
             if (res.clientSecret) setCredentials({ ...res, name });
             else toast.success('Application created', name);
+            await qc.invalidateQueries({ queryKey: ['apps', projectId] });
           }}
         />
       )}

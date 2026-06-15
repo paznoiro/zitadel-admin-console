@@ -217,10 +217,27 @@ export async function updateOIDCApp(
   appId: string,
   input: UpdateOIDCAppInput,
 ): Promise<void> {
-  await api.put(EP.appUpdateOIDC(projectId, appId), {
-    ...input,
-    clockSkew: input.clockSkew ?? '0s',
-  });
+  // v2 UpdateApplication: send ONLY oidcConfiguration (no name field).
+  // Including name causes ZITADEL to short-circuit on "no name change" and ignore config updates.
+  await api.post(EP.appV2UpdateName(), {
+    applicationId: appId,
+    projectId,
+    oidcConfiguration: {
+      redirectUris: input.redirectUris,
+      postLogoutRedirectUris: input.postLogoutRedirectUris,
+      allowedOrigins: input.additionalOrigins,
+      appType: input.appType,
+      authMethodType: input.authMethodType,
+      grantTypes: input.grantTypes,
+      responseTypes: input.responseTypes,
+      developmentMode: input.devMode,
+      accessTokenType: input.accessTokenType,
+      accessTokenRoleAssertion: input.accessTokenRoleAssertion,
+      idTokenRoleAssertion: input.idTokenRoleAssertion,
+      idTokenUserinfoAssertion: input.idTokenUserinfoAssertion,
+      clockSkew: input.clockSkew ?? '0s',
+    },
+  }, { extraHeaders: { 'Connect-Protocol-Version': '1' } });
 }
 
 export async function updateAPIApp(
@@ -228,5 +245,9 @@ export async function updateAPIApp(
   appId: string,
   authMethodType: string,
 ): Promise<void> {
-  await api.put(EP.appUpdateAPI(projectId, appId), { authMethodType });
+  await api.post(EP.appV2UpdateName(), {
+    applicationId: appId,
+    projectId,
+    apiConfiguration: { authMethodType },
+  }, { extraHeaders: { 'Connect-Protocol-Version': '1' } });
 }
