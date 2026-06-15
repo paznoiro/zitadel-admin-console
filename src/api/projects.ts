@@ -3,12 +3,16 @@ import { EP } from './endpoints';
 import type { Project, ProjectRole } from './types';
 
 /**
- * Projects, roles and applications use the management v1 transport (there is no
- * v2 project API on current ZITADEL). Reads run in the token's own org with no
- * x-zitadel-orgid header. The optional `orgId` on the *create* helpers is only
- * supplied by the duplicate-org wizard to target a freshly created org; tokens
- * that don't support org switching will surface a clear error on that path.
+ * Projects and roles use the zitadel.project.v2 Connect RPC transport. List
+ * reads filter by org via the request body; create/delete carry the org in the
+ * body too (organizationId). Project update still uses management v1 (no v2 RPC
+ * yet). The optional `orgId` on the create helper is supplied by the
+ * duplicate-org wizard to target a freshly created org; when omitted the call
+ * runs in the token's own org.
  */
+
+// All v2 Connect RPCs require this header.
+const CONNECT_HDR = { 'Connect-Protocol-Version': '1' };
 
 interface ProjectListResponse {
   projects?: Array<Record<string, unknown>>;
@@ -55,15 +59,32 @@ export interface CreateProjectInput {
 }
 
 export async function createProject(input: CreateProjectInput, orgId?: string): Promise<Project> {
+  // v2 CreateProject: org is in the body (organizationId), and the role/access
+  // flags are renamed (projectRoleCheck → authorizationRequired,
+  // hasProjectCheck → projectAccessRequired).
   const body = {
+    ...(orgId ? { organizationId: orgId } : {}),
     name: input.name,
     projectRoleAssertion: input.projectRoleAssertion ?? false,
-    projectRoleCheck: input.projectRoleCheck ?? false,
-    hasProjectCheck: input.hasProjectCheck ?? false,
-    privateLabelingSetting: input.privateLabelingSetting ?? 'PRIVATE_LABELING_SETTING_UNSPECIFIED',
+    authorizationRequired: input.projectRoleCheck ?? false,
+    projectAccessRequired: input.hasProjectCheck ?? false,
+    privateLabelingSetting:
+      input.privateLabelingSetting ?? 'PRIVATE_LABELING_SETTING_UNSPECIFIED',
   };
-  const res = await api.post<Record<string, unknown>>(EP.projectCreate(), body, { orgId });
-  return normalizeProject({ ...body, ...res });
+  const res = await api.post<Record<string, unknown>>(EP.projectCreate(), body, {
+    extraHeaders: CONNECT_HDR,
+  });
+  // Re-shape into the normalizer's expected (v1-style) field names.
+  return normalizeProject({
+    id: res.projectId,
+    name: input.name,
+    projectRoleAssertion: body.projectRoleAssertion,
+    projectRoleCheck: body.authorizationRequired,
+    hasProjectCheck: body.projectAccessRequired,
+    privateLabelingSetting: body.privateLabelingSetting,
+    organizationId: orgId,
+    ...res,
+  });
 }
 
 export async function updateProject(
@@ -87,12 +108,10 @@ export async function getProject(projectId: string): Promise<Project> {
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  await api.delete(EP.projectDelete(projectId));
+  await api.post(EP.projectDelete(), { projectId }, { extraHeaders: CONNECT_HDR });
 }
 
 // ---- Roles -----------------------------------------------------------------
-
-const CONNECT_HDR = { 'Connect-Protocol-Version': '1' };
 
 interface RoleListResponse {
   projectRoles?: Array<Record<string, unknown>>;

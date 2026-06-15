@@ -60,7 +60,7 @@ export default function Projects() {
   }
 
   const createM = useMutation({
-    mutationFn: () => createProject(form),
+    mutationFn: () => createProject(form, activeOrgId ?? undefined),
     onSuccess: () => {
       toast.success('Project created', form.name);
       setCreating(false);
@@ -241,7 +241,7 @@ export default function Projects() {
           </Field>
           <div className="space-y-2">
             <Checkbox
-              label="Assert roles on authentication"
+              label="Return user roles during authentication"
               checked={form.projectRoleAssertion}
               onChange={(v) => setForm((f) => ({ ...f, projectRoleAssertion: v }))}
             />
@@ -289,7 +289,7 @@ export default function Projects() {
           </Field>
           <div className="space-y-2">
             <Checkbox
-              label="Assert roles on authentication"
+              label="Return user roles during authentication"
               checked={editForm.projectRoleAssertion}
               onChange={(v) => setEditForm((f) => ({ ...f, projectRoleAssertion: v }))}
             />

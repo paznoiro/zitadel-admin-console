@@ -718,6 +718,7 @@ function CreateAppModal({
   const [appType, setAppType] = useState('OIDC_APP_TYPE_WEB');
   const [authMethod, setAuthMethod] = useState('OIDC_AUTH_METHOD_TYPE_BASIC');
   const [redirects, setRedirects] = useState('');
+  const [postLogoutRedirects, setPostLogoutRedirects] = useState('');
   const [devMode, setDevMode] = useState(false);
 
   const createM = useMutation({
@@ -728,6 +729,10 @@ function CreateAppModal({
           {
             name: name.trim(),
             redirectUris: redirects
+              .split(/[\n,]/)
+              .map((s) => s.trim())
+              .filter(Boolean),
+            postLogoutRedirectUris: postLogoutRedirects
               .split(/[\n,]/)
               .map((s) => s.trim())
               .filter(Boolean),
@@ -817,6 +822,15 @@ function CreateAppModal({
                 onChange={(e) => setRedirects(e.target.value)}
                 placeholder="https://app.example.com/callback"
                 rows={3}
+                className="glass-input w-full px-3.5 py-2.5 text-sm"
+              />
+            </Field>
+            <Field label="Post-logout redirect URIs" hint="One per line or comma-separated.">
+              <textarea
+                value={postLogoutRedirects}
+                onChange={(e) => setPostLogoutRedirects(e.target.value)}
+                placeholder="https://app.example.com/logout"
+                rows={2}
                 className="glass-input w-full px-3.5 py-2.5 text-sm"
               />
             </Field>

@@ -24,14 +24,16 @@ export const EP = {
   orgUpdate: (orgId: string) => `/v2beta/organizations/${orgId}`, // POST (rename)
   orgDelete: (orgId: string) => `/v2beta/organizations/${orgId}`,
 
-  // ---- Project service (management v1) ----
-  projectCreate: () => `/management/v1/projects`,
+  // ---- Project service ----
+  // v2 Connect RPC — POST { organizationId, name, ... }
+  projectCreate: () => `/zitadel.project.v2.ProjectService/CreateProject`,
   projectSearch: () => `/management/v1/projects/_search`,
   // v2 Connect RPC — org-filtered list (supersedes projectSearch for reads)
   projectList: () => `/zitadel.project.v2.ProjectService/ListProjects`,
   projectGet: (projectId: string) => `/management/v1/projects/${projectId}`,
   projectUpdate: (projectId: string) => `/management/v1/projects/${projectId}`, // PUT
-  projectDelete: (projectId: string) => `/management/v1/projects/${projectId}`,
+  // v2 Connect RPC — POST { projectId }
+  projectDelete: () => `/zitadel.project.v2.ProjectService/DeleteProject`,
 
   // Project roles (zitadel.project.v2 Connect RPC)
   roleList: () => `/zitadel.project.v2.ProjectService/ListProjectRoles`,
