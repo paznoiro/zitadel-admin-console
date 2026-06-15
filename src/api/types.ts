@@ -40,6 +40,31 @@ export interface ProjectRole {
 
 export type AppType = 'OIDC' | 'API' | 'SAML';
 
+/** Normalized OIDC config — tolerates v2 (`oidcConfiguration`/`allowedOrigins`) and management v1 (`oidcConfig`/`additionalOrigins`) field names. */
+export interface OidcConfig {
+  redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  additionalOrigins: string[];
+  responseTypes: string[];
+  grantTypes: string[];
+  appType: string;
+  authMethodType: string;
+  clientId?: string;
+  devMode: boolean;
+  accessTokenType: string;
+  accessTokenRoleAssertion: boolean;
+  idTokenRoleAssertion: boolean;
+  idTokenUserinfoAssertion: boolean;
+  clockSkew?: string;
+  /** 'v1' | 'v2' | undefined — derived from `loginVersion`. */
+  loginVersion?: 'v1' | 'v2';
+}
+
+export interface ApiConfig {
+  authMethodType: string;
+  clientId?: string;
+}
+
 export interface Application {
   id: string;
   name: string;
@@ -48,6 +73,9 @@ export interface Application {
   /** Subset of config we surface; raw config kept under `raw`. */
   clientId?: string;
   redirectUris?: string[];
+  /** Normalized configs (present for matching app type). */
+  oidc?: OidcConfig;
+  api?: ApiConfig;
   raw?: unknown;
 }
 

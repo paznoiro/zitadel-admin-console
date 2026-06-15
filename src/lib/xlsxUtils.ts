@@ -152,6 +152,94 @@ export function parseXlsx(
   });
 }
 
+// ── Project roles (bulk add) ──────────────────────────────────────────────────
+
+export interface ParsedRoleRow {
+  roleKey: string;
+  displayName?: string;
+  group?: string;
+  _line: number;
+}
+
+const ROLE_COLS = [
+  { header: 'roleKey', width: 24 },
+  { header: 'displayName', width: 30 },
+  { header: 'group', width: 20 },
+] as const;
+
+export function generateRolesTemplate(): Blob {
+  const headers = ROLE_COLS.map((c) => c.header);
+  const example = ['admin', 'Administrator', 'management'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+  ws['!cols'] = ROLE_COLS.map((c) => ({ wch: c.width }));
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 } as XLSX.ColInfo;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Roles');
+  return makeBlob(wb);
+}
+
+function toRoleRow(
+  roleKey: string,
+  displayName: string,
+  group: string,
+  line: number,
+): ParsedRoleRow {
+  return {
+    roleKey: roleKey.trim(),
+    displayName: displayName.trim() || undefined,
+    group: group.trim() || undefined,
+    _line: line,
+  };
+}
+
+/** Parse pasted text: one role per line, fields separated by comma or tab. */
+export function parseRoleLines(text: string): ParsedRoleRow[] {
+  const rows: ParsedRoleRow[] = [];
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const [key = '', display = '', group = ''] = trimmed.split(/[\t,]/);
+    // Skip an accidental header row
+    if (i === 0 && key.trim().toLowerCase() === 'rolekey') return;
+    if (key.trim()) rows.push(toRoleRow(key, display, group, i + 1));
+  });
+  return rows;
+}
+
+/** Parse an uploaded XLSX/CSV: reads the first sheet, columns roleKey/displayName/group. */
+export function parseRolesXlsx(buffer: ArrayBuffer): ParsedRoleRow[] {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+    defval: '',
+    raw: false,
+  });
+
+  function pick(row: Record<string, unknown>, ...keys: string[]): string {
+    for (const k of keys) {
+      for (const rk of Object.keys(row)) {
+        if (rk.toLowerCase().trim() === k.toLowerCase()) {
+          const v = row[rk];
+          if (typeof v === 'string' && v.trim()) return v.trim();
+          if (typeof v === 'number') return String(v);
+        }
+      }
+    }
+    return '';
+  }
+
+  const rows: ParsedRoleRow[] = [];
+  raw.forEach((row, i) => {
+    const key = pick(row, 'roleKey', 'key', 'role');
+    if (!key) return;
+    rows.push(
+      toRoleRow(key, pick(row, 'displayName', 'name', 'display'), pick(row, 'group'), i + 2),
+    );
+  });
+  return rows;
+}
+
 // ── Export helpers ────────────────────────────────────────────────────────────
 
 function downloadBlob(blob: Blob, filename: string) {

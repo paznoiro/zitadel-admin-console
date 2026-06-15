@@ -1,6 +1,6 @@
 import { api } from './client';
 import { EP } from './endpoints';
-import type { Application, AppType } from './types';
+import type { Application, ApiConfig, AppType, OidcConfig } from './types';
 
 /** Application list uses the v2 Connect RPC service; write operations use management v1. */
 
@@ -8,24 +8,72 @@ interface AppListResponse {
   applications?: Array<Record<string, unknown>>;
 }
 
+/** v2 nests config as `oidcConfiguration`; management v1 uses `oidcConfig`. */
+function rawOidc(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+  return (raw.oidcConfig ?? raw.oidcConfiguration) as Record<string, unknown> | undefined;
+}
+function rawApi(raw: Record<string, unknown>): Record<string, unknown> | undefined {
+  return (raw.apiConfig ?? raw.apiConfiguration) as Record<string, unknown> | undefined;
+}
+
 function detectType(raw: Record<string, unknown>): AppType {
-  if (raw.oidcConfig || raw.oidcConfiguration) return 'OIDC';
-  if (raw.apiConfig || raw.apiConfiguration) return 'API';
+  if (rawOidc(raw)) return 'OIDC';
+  if (rawApi(raw)) return 'API';
   if (raw.samlConfig || raw.samlConfiguration) return 'SAML';
   return 'OIDC';
 }
 
+function strArray(v: unknown): string[] {
+  return Array.isArray(v) ? (v as string[]) : [];
+}
+
+/** Reads an OIDC config block, tolerating both v2 and management v1 field names. */
+function parseOidc(c: Record<string, unknown>): OidcConfig {
+  const lv = c.loginVersion as Record<string, unknown> | undefined;
+  return {
+    redirectUris: strArray(c.redirectUris),
+    postLogoutRedirectUris: strArray(c.postLogoutRedirectUris),
+    // v2 calls this `allowedOrigins`; management v1 calls it `additionalOrigins`.
+    additionalOrigins: strArray(c.additionalOrigins ?? c.allowedOrigins),
+    responseTypes: strArray(c.responseTypes).length
+      ? strArray(c.responseTypes)
+      : ['OIDC_RESPONSE_TYPE_CODE'],
+    grantTypes: strArray(c.grantTypes).length
+      ? strArray(c.grantTypes)
+      : ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE'],
+    appType: (c.appType as string | undefined) ?? 'OIDC_APP_TYPE_WEB',
+    authMethodType: (c.authMethodType as string | undefined) ?? 'OIDC_AUTH_METHOD_TYPE_BASIC',
+    clientId: c.clientId as string | undefined,
+    devMode: (c.devMode as boolean | undefined) ?? false,
+    accessTokenType: (c.accessTokenType as string | undefined) ?? 'OIDC_TOKEN_TYPE_BEARER',
+    accessTokenRoleAssertion: (c.accessTokenRoleAssertion as boolean | undefined) ?? false,
+    idTokenRoleAssertion: (c.idTokenRoleAssertion as boolean | undefined) ?? false,
+    idTokenUserinfoAssertion: (c.idTokenUserinfoAssertion as boolean | undefined) ?? false,
+    clockSkew: c.clockSkew as string | undefined,
+    loginVersion: lv ? ('loginV2' in lv ? 'v2' : 'v1') : undefined,
+  };
+}
+
 function normalizeApp(raw: Record<string, unknown>): Application {
   const type = detectType(raw);
-  const oidc = (raw.oidcConfig ?? raw.oidcConfiguration) as Record<string, unknown> | undefined;
-  const apiCfg = (raw.apiConfig ?? raw.apiConfiguration) as Record<string, unknown> | undefined;
+  const oidcRaw = rawOidc(raw);
+  const apiRaw = rawApi(raw);
+  const oidc = oidcRaw ? parseOidc(oidcRaw) : undefined;
+  const api: ApiConfig | undefined = apiRaw
+    ? {
+        authMethodType: (apiRaw.authMethodType as string | undefined) ?? 'API_AUTH_METHOD_TYPE_BASIC',
+        clientId: apiRaw.clientId as string | undefined,
+      }
+    : undefined;
   return {
     id: String(raw.id ?? raw.appId ?? raw.applicationId ?? ''),
     name: String(raw.name ?? ''),
     state: raw.state as string | undefined,
     type,
-    clientId: (oidc?.clientId ?? apiCfg?.clientId) as string | undefined,
-    redirectUris: oidc?.redirectUris as string[] | undefined,
+    clientId: oidc?.clientId ?? api?.clientId,
+    redirectUris: oidc?.redirectUris,
+    oidc,
+    api,
     raw,
   };
 }

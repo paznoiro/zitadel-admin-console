@@ -129,7 +129,12 @@ export async function createRole(
 ): Promise<void> {
   await api.post(
     EP.roleAdd(),
-    { projectId, roleKey: input.roleKey, displayName: input.displayName || input.roleKey },
+    {
+      projectId,
+      roleKey: input.roleKey,
+      displayName: input.displayName || input.roleKey,
+      ...(input.group ? { group: input.group } : {}),
+    },
     { extraHeaders: CONNECT_HDR },
   );
 }
@@ -141,7 +146,12 @@ export async function updateRole(
 ): Promise<void> {
   await api.post(
     EP.roleUpdate(),
-    { projectId, roleKey, displayName: input.displayName || roleKey },
+    {
+      projectId,
+      roleKey,
+      displayName: input.displayName || roleKey,
+      ...(input.group ? { group: input.group } : {}),
+    },
     { extraHeaders: CONNECT_HDR },
   );
 }
