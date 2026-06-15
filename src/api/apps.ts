@@ -106,29 +106,34 @@ export interface CreateOIDCAppResult {
 export async function createOIDCApp(
   projectId: string,
   input: CreateOIDCAppInput,
-  orgId?: string,
+  _orgId?: string,
 ): Promise<CreateOIDCAppResult> {
   const body = {
+    projectId,
     name: input.name,
-    redirectUris: input.redirectUris,
-    postLogoutRedirectUris: input.postLogoutRedirectUris ?? [],
-    responseTypes: input.responseTypes ?? ['OIDC_RESPONSE_TYPE_CODE'],
-    grantTypes: input.grantTypes ?? ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE'],
-    appType: input.appType ?? 'OIDC_APP_TYPE_WEB',
-    authMethodType: input.authMethodType ?? 'OIDC_AUTH_METHOD_TYPE_BASIC',
-    version: 'OIDC_VERSION_1_0',
-    devMode: input.devMode ?? false,
-    accessTokenType: 'OIDC_TOKEN_TYPE_BEARER',
-    accessTokenRoleAssertion: true,
-    idTokenRoleAssertion: true,
-    idTokenUserinfoAssertion: true,
-    clockSkew: '0s',
+    oidcConfiguration: {
+      redirectUris: input.redirectUris,
+      postLogoutRedirectUris: input.postLogoutRedirectUris ?? [],
+      responseTypes: input.responseTypes ?? ['OIDC_RESPONSE_TYPE_CODE'],
+      grantTypes: input.grantTypes ?? ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE'],
+      appType: input.appType ?? 'OIDC_APP_TYPE_WEB',
+      authMethodType: input.authMethodType ?? 'OIDC_AUTH_METHOD_TYPE_BASIC',
+      developmentMode: input.devMode ?? false,
+      accessTokenType: 'OIDC_TOKEN_TYPE_BEARER',
+      accessTokenRoleAssertion: true,
+      idTokenRoleAssertion: true,
+      idTokenUserinfoAssertion: true,
+      clockSkew: '0s',
+    },
   };
-  const res = await api.post<Record<string, unknown>>(EP.appCreateOIDC(projectId), body, { orgId });
+  const res = await api.post<Record<string, unknown>>(EP.appV2Create(), body, {
+    extraHeaders: { 'Connect-Protocol-Version': '1' },
+  });
+  const oidcCfg = res.oidcConfiguration as Record<string, unknown> | undefined;
   return {
-    appId: String(res.appId ?? res.id ?? ''),
-    clientId: res.clientId as string | undefined,
-    clientSecret: res.clientSecret as string | undefined,
+    appId: String(res.applicationId ?? ''),
+    clientId: oidcCfg?.clientId as string | undefined,
+    clientSecret: oidcCfg?.clientSecret as string | undefined,
   };
 }
 
@@ -146,32 +151,49 @@ export interface CreateAPIAppResult {
 export async function createAPIApp(
   projectId: string,
   input: CreateAPIAppInput,
-  orgId?: string,
+  _orgId?: string,
 ): Promise<CreateAPIAppResult> {
   const body = {
+    projectId,
     name: input.name,
-    authMethodType: input.authMethodType ?? 'API_AUTH_METHOD_TYPE_BASIC',
+    apiConfiguration: {
+      authMethodType: input.authMethodType ?? 'API_AUTH_METHOD_TYPE_BASIC',
+    },
   };
-  const res = await api.post<Record<string, unknown>>(EP.appCreateAPI(projectId), body, { orgId });
+  const res = await api.post<Record<string, unknown>>(EP.appV2Create(), body, {
+    extraHeaders: { 'Connect-Protocol-Version': '1' },
+  });
+  const apiCfg = res.apiConfiguration as Record<string, unknown> | undefined;
   return {
-    appId: String(res.appId ?? res.id ?? ''),
-    clientId: res.clientId as string | undefined,
-    clientSecret: res.clientSecret as string | undefined,
+    appId: String(res.applicationId ?? ''),
+    clientId: apiCfg?.clientId as string | undefined,
+    clientSecret: apiCfg?.clientSecret as string | undefined,
   };
 }
 
 export async function deleteApp(projectId: string, appId: string): Promise<void> {
-  await api.delete(EP.appDelete(projectId, appId));
+  await api.post(EP.appV2Delete(), { applicationId: appId, projectId }, {
+    extraHeaders: { 'Connect-Protocol-Version': '1' },
+  });
 }
 
 export async function getApp(projectId: string, appId: string): Promise<Application> {
-  const res = await api.get<Record<string, unknown>>(EP.appGet(projectId, appId));
-  const raw = (res.app ?? res) as Record<string, unknown>;
+  const res = await api.post<Record<string, unknown>>(EP.appV2Get(), { applicationId: appId }, {
+    extraHeaders: { 'Connect-Protocol-Version': '1' },
+  });
+  const raw = (res.application ?? res) as Record<string, unknown>;
+  // v2 GetApplication falls back to management v1 if it returns an unexpected shape
+  if (!raw.applicationId && !raw.name) {
+    const v1res = await api.get<Record<string, unknown>>(EP.appGet(projectId, appId));
+    return normalizeApp((v1res.app ?? v1res) as Record<string, unknown>);
+  }
   return normalizeApp(raw);
 }
 
 export async function updateAppName(projectId: string, appId: string, name: string): Promise<void> {
-  await api.put(EP.appUpdate(projectId, appId), { name });
+  await api.post(EP.appV2UpdateName(), { applicationId: appId, projectId, name }, {
+    extraHeaders: { 'Connect-Protocol-Version': '1' },
+  });
 }
 
 export interface UpdateOIDCAppInput {

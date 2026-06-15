@@ -45,6 +45,16 @@ export const EP = {
   // v2 Connect RPC — project-filtered list (supersedes appSearch for reads)
   appList: () => `/zitadel.application.v2.ApplicationService/ListApplications`,
   appSearch: (projectId: string) => `/management/v1/projects/${projectId}/apps/_search`,
+  // v2 Connect RPC CRUD — verified live 2026-06-15
+  // CreateApplication: needs projectId + name + oidcConfiguration|apiConfiguration
+  // GetApplication: only needs applicationId (no projectId)
+  // UpdateApplication: needs projectId + applicationId + name (rename only; OIDC config update still v1)
+  // DeleteApplication: needs projectId + applicationId
+  appV2Create: () => `/zitadel.application.v2.ApplicationService/CreateApplication`,
+  appV2Get: () => `/zitadel.application.v2.ApplicationService/GetApplication`,
+  appV2UpdateName: () => `/zitadel.application.v2.ApplicationService/UpdateApplication`,
+  appV2Delete: () => `/zitadel.application.v2.ApplicationService/DeleteApplication`,
+  // management v1 fallbacks (still needed for OIDC/API config updates — no v2 equivalent)
   appCreateOIDC: (projectId: string) => `/management/v1/projects/${projectId}/apps/oidc`,
   appCreateAPI: (projectId: string) => `/management/v1/projects/${projectId}/apps/api`,
   appDelete: (projectId: string, appId: string) =>
@@ -85,11 +95,11 @@ export const EP = {
   orgLabelPolicyIconUpload: () => `/assets/v1/org/policy/label/icon`,
   orgLabelPolicyIconDarkUpload: () => `/assets/v1/org/policy/label/icon/dark`,
 
-  // ---- Application get + update (management v1) ----
+  // ---- Application config updates (management v1 — no v2 equivalent yet) ----
   appGet: (projectId: string, appId: string) =>
     `/management/v1/projects/${projectId}/apps/${appId}`,
   appUpdate: (projectId: string, appId: string) =>
-    `/management/v1/projects/${projectId}/apps/${appId}`, // PUT {name}
+    `/management/v1/projects/${projectId}/apps/${appId}`, // PUT {name} — superseded by appV2UpdateName
   appUpdateOIDC: (projectId: string, appId: string) =>
     `/management/v1/projects/${projectId}/apps/${appId}/oidc`, // PUT
   appUpdateAPI: (projectId: string, appId: string) =>

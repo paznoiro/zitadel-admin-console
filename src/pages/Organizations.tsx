@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, Search, Trash2, CopyPlus, Check, Star, Pencil, Palette, Settings, Upload, X } from 'lucide-react';
+import { Building2, Plus, Search, Trash2, CopyPlus, Check, Star, Pencil, Palette, Settings, Upload, X, Copy, Globe, Hash } from 'lucide-react';
 import {
   createOrganization,
   deleteOrganization,
@@ -173,9 +173,16 @@ export default function Organizations() {
             return (
               <div key={o.id} className="glass group flex flex-col p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-accent)]/40 to-[var(--color-accent-2)]/30">
+                  <button
+                    onClick={() => {
+                      setActiveOrg(o.id);
+                      navigate('/projects');
+                    }}
+                    className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-accent)]/40 to-[var(--color-accent-2)]/30 transition hover:opacity-80"
+                    title="Open projects"
+                  >
                     <Building2 className="size-5 text-white" />
-                  </div>
+                  </button>
                   {isActive ? (
                     <Badge tone="good">
                       <Check className="size-3" /> Active
@@ -184,12 +191,41 @@ export default function Organizations() {
                     o.state && <Badge>{o.state.replace('ORG_STATE_', '')}</Badge>
                   )}
                 </div>
-                <h3 className="mt-3 truncate font-semibold text-white" title={o.name}>
-                  {o.name}
-                </h3>
-                <p className="truncate text-xs text-[var(--color-ink-dim)]">
-                  {o.primaryDomain ?? o.id}
-                </p>
+                <button
+                  onClick={() => {
+                    setActiveOrg(o.id);
+                    navigate('/projects');
+                  }}
+                  className="mt-3 text-left transition hover:opacity-80"
+                  title="Set active and open projects"
+                >
+                  <h3 className="truncate font-semibold text-white" title={o.name}>
+                    {o.name}
+                  </h3>
+                </button>
+
+                {/* Domain */}
+                {o.primaryDomain && (
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-[var(--color-ink-dim)]" title={o.primaryDomain}>
+                    <Globe className="size-3 shrink-0" />
+                    {o.primaryDomain}
+                  </p>
+                )}
+
+                {/* Org ID with copy */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(o.id);
+                    toast.success('Org ID copied');
+                  }}
+                  className="mt-1 flex items-center gap-1 font-mono text-[11px] text-[var(--color-ink-dim)] transition hover:text-white"
+                  title="Copy org ID"
+                >
+                  <Hash className="size-3 shrink-0" />
+                  <span className="truncate">{o.id}</span>
+                  <Copy className="size-3 shrink-0 opacity-0 transition group-hover:opacity-100" />
+                </button>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
                   {!isActive && (
