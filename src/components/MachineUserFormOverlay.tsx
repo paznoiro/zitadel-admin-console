@@ -147,7 +147,12 @@ export function MachineUserFormOverlay({
           borderTop: '1px solid rgba(255,255,255,0.07)',
         }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={saveM.isPending} disabled={!canSave} onClick={() => saveM.mutate()}>
+          <Button
+            loading={saveM.isPending}
+            disabled={!canSave}
+            onClick={() => saveM.mutate()}
+            hint={isEdit ? 'PUT /v2/users/machine/{id}' : 'POST /v2/users/machine'}
+          >
             {isEdit ? 'Save Changes' : 'Create Account'}
           </Button>
         </div>

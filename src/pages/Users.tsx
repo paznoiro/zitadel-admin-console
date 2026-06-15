@@ -27,6 +27,7 @@ import {
   Button,
   EmptyState,
   ErrorBox,
+  HintWrap,
   Input,
   PageHeader,
   Spinner,
@@ -235,19 +236,23 @@ export default function Users() {
                 >
                   <Pencil className="size-4" />
                 </button>
-                <button
-                  onClick={() => toggleM.mutate({ id: u.userId, active })}
-                  title={active ? 'Deactivate' : 'Activate'}
-                  className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
-                >
-                  {active ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
-                </button>
-                <button
-                  onClick={() => onDelete(u.userId, name)}
-                  className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
-                >
-                  <Trash2 className="size-4" />
-                </button>
+                <HintWrap hint={active ? 'POST /v2/users/{id}/deactivate' : 'POST /v2/users/{id}/reactivate'}>
+                  <button
+                    onClick={() => toggleM.mutate({ id: u.userId, active })}
+                    title={active ? 'Deactivate' : 'Activate'}
+                    className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                  >
+                    {active ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
+                  </button>
+                </HintWrap>
+                <HintWrap hint="DELETE /v2/users/{id}">
+                  <button
+                    onClick={() => onDelete(u.userId, name)}
+                    className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </HintWrap>
               </div>
             );
           })}

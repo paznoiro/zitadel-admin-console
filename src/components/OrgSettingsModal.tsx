@@ -215,7 +215,7 @@ function LoginTab({ org }: { org: Organization }) {
       </div>
 
       <div className="flex justify-end">
-        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />}>
+        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/login">
           Save login settings
         </Button>
       </div>
@@ -302,7 +302,7 @@ function PasswordTab({ org }: { org: Organization }) {
               </div>
             </div>
             <div className="mt-3 flex justify-end">
-              <Button size="sm" loading={complexM.isPending} onClick={() => complexM.mutate()} icon={<Save className="size-3.5" />}>
+              <Button size="sm" loading={complexM.isPending} onClick={() => complexM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/password/complexity">
                 Save complexity
               </Button>
             </div>
@@ -340,7 +340,7 @@ function PasswordTab({ org }: { org: Organization }) {
               />
             </div>
             <div className="mt-3 flex justify-end">
-              <Button size="sm" loading={ageM.isPending} onClick={() => ageM.mutate()} icon={<Save className="size-3.5" />}>
+              <Button size="sm" loading={ageM.isPending} onClick={() => ageM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/password/age">
                 Save expiry
               </Button>
             </div>
@@ -399,7 +399,7 @@ function LockoutTab({ org }: { org: Organization }) {
         />
       </div>
       <div className="flex justify-end">
-        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />}>
+        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/lockout">
           Save lockout settings
         </Button>
       </div>
@@ -465,7 +465,7 @@ function LegalTab({ org }: { org: Organization }) {
         <Input value={form.customLinkText ?? ''} placeholder="Custom portal" onChange={(e) => set('customLinkText', e.target.value)} />
       </Field>
       <div className="flex justify-end">
-        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />}>
+        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/privacy">
           Save legal settings
         </Button>
       </div>
@@ -535,11 +535,12 @@ function NotificationsTab({ org }: { org: Organization }) {
             loading={resetM.isPending}
             onClick={() => resetM.mutate()}
             icon={<RotateCcw className="size-3.5" />}
+            hint="DELETE /management/v1/policies/notification"
           >
             Reset to default
           </Button>
         )}
-        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />}>
+        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /management/v1/policies/notification">
           Save notification settings
         </Button>
       </div>
@@ -627,11 +628,12 @@ function DomainTab({ org }: { org: Organization }) {
             loading={resetM.isPending}
             onClick={() => resetM.mutate()}
             icon={<RotateCcw className="size-3.5" />}
+            hint="DELETE /admin/v1/orgs/{id}/policies/domain"
           >
             Reset to default
           </Button>
         )}
-        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />}>
+        <Button loading={saveM.isPending} onClick={() => saveM.mutate()} icon={<Save className="size-3.5" />} hint="POST/PUT /admin/v1/orgs/{id}/policies/domain">
           Save domain settings
         </Button>
       </div>

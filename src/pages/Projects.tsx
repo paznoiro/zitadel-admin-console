@@ -14,6 +14,7 @@ import {
   EmptyState,
   ErrorBox,
   Field,
+  HintWrap,
   Input,
   PageHeader,
   Spinner,
@@ -220,16 +221,18 @@ export default function Projects() {
               >
                 <Pencil className="size-4" />
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(p.id, p.name);
-                }}
-                title="Delete project"
-                className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
-              >
-                <Trash2 className="size-4" />
-              </button>
+              <HintWrap hint="POST project.v2/DeleteProject">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(p.id, p.name);
+                  }}
+                  title="Delete project"
+                  className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </HintWrap>
               <ChevronRight className="size-4 text-[var(--color-ink-dim)]" />
             </div>
           ))}
@@ -245,7 +248,7 @@ export default function Projects() {
             <Button variant="ghost" onClick={() => setCreating(false)}>
               Cancel
             </Button>
-            <Button loading={createM.isPending} disabled={!form.name.trim()} onClick={() => createM.mutate()}>
+            <Button loading={createM.isPending} disabled={!form.name.trim()} onClick={() => createM.mutate()} hint="POST project.v2/CreateProject">
               Create
             </Button>
           </>
@@ -294,6 +297,7 @@ export default function Projects() {
               loading={updateM.isPending}
               disabled={!editForm.name.trim()}
               onClick={() => updateM.mutate()}
+              hint="PUT /management/v1/projects/{id}"
             >
               Save
             </Button>

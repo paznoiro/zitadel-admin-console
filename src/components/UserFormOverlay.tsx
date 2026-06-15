@@ -436,7 +436,14 @@ export function UserFormOverlay({
           flexShrink: 0,
         }}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button loading={saveM.isPending} disabled={!canSave} onClick={() => saveM.mutate()}>
+          <Button
+            loading={saveM.isPending}
+            disabled={!canSave}
+            onClick={() => saveM.mutate()}
+            hint={isEdit
+              ? ['PUT /v2/users/human/{id}', 'POST /v2/users/{id}/password (if set)']
+              : 'POST /v2/users/human'}
+          >
             {isEdit ? 'Save Changes' : 'Create User'}
           </Button>
         </div>
