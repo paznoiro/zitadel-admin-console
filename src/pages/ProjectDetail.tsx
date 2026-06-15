@@ -24,6 +24,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { getSession } from '../api/session';
+import { useAuth } from '../context/AuthContext';
 import { deleteRole, listRoles, createRole, updateRole } from '../api/projects';
 import {
   generateRolesTemplate,
@@ -144,6 +145,7 @@ function AppsTab({ projectId }: { projectId: string }) {
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
+  const { activeOrgId } = useAuth();
   const [creating, setCreating] = useState(false);
   const [editApp, setEditApp] = useState<Application | null>(null);
   const [endpointsApp, setEndpointsApp] = useState<Application | null>(null);
@@ -256,7 +258,12 @@ function AppsTab({ projectId }: { projectId: string }) {
       )}
 
       {endpointsApp && (
-        <OIDCEndpointsModal app={endpointsApp} onClose={() => setEndpointsApp(null)} />
+        <OIDCEndpointsModal
+          app={endpointsApp}
+          projectId={projectId}
+          orgId={activeOrgId ?? ''}
+          onClose={() => setEndpointsApp(null)}
+        />
       )}
 
       <Modal
@@ -782,7 +789,17 @@ function EndpointRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function OIDCEndpointsModal({ app, onClose }: { app: Application; onClose: () => void }) {
+function OIDCEndpointsModal({
+  app,
+  projectId,
+  orgId,
+  onClose,
+}: {
+  app: Application;
+  projectId: string;
+  orgId: string;
+  onClose: () => void;
+}) {
   const toast = useToast();
   const baseUrl = getSession()?.baseUrl ?? '';
   const discoveryUrl = `${baseUrl}/.well-known/openid-configuration`;
@@ -810,6 +827,8 @@ function OIDCEndpointsModal({ app, onClose }: { app: Application; onClose: () =>
           variant="ghost"
           onClick={() => {
             const lines = [
+              `Organization ID: ${orgId}`,
+              `Project ID: ${projectId}`,
               `Client ID: ${app.clientId ?? ''}`,
               `Discovery: ${discoveryUrl}`,
               ...(doc ? [
@@ -822,7 +841,7 @@ function OIDCEndpointsModal({ app, onClose }: { app: Application; onClose: () =>
               ] : []),
             ];
             navigator.clipboard.writeText(lines.join('\n'));
-            toast.success('All endpoints copied');
+            toast.success('All details copied');
           }}
           icon={<Copy className="size-4" />}
         >
@@ -831,6 +850,10 @@ function OIDCEndpointsModal({ app, onClose }: { app: Application; onClose: () =>
       }
     >
       <div className="space-y-2">
+        {/* IDs section */}
+        {orgId && <EndpointRow label="Organization ID" value={orgId} />}
+        <EndpointRow label="Project ID" value={projectId} />
+
         {/* Client ID */}
         {app.clientId && (
           <EndpointRow label="Client ID" value={app.clientId} />
