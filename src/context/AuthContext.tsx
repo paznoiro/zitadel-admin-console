@@ -22,8 +22,11 @@ import type { AuthKind } from '../api/session';
 export interface ConnectExtras {
   kind?: AuthKind;
   refreshToken?: string;
+  idToken?: string;
+  tokenResponse?: Record<string, unknown>;
   clientId?: string;
   tokenEndpoint?: string;
+  oauthScope?: string;
   expiresIn?: number;
 }
 
@@ -83,8 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         label,
         kind: extras?.kind ?? 'pat',
         refreshToken: extras?.refreshToken,
+        idToken: extras?.idToken,
+        tokenResponse: extras?.tokenResponse,
         clientId: extras?.clientId,
         tokenEndpoint: extras?.tokenEndpoint,
+        oauthScope: extras?.oauthScope,
         expiresAt: extras?.expiresIn ? Date.now() + extras.expiresIn * 1000 : undefined,
       };
       setSession(next); // client reads from here for the validation call below

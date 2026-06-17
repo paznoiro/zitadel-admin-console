@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -15,8 +15,9 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Button, Field, Input, cn } from '../components/ui';
 import { ApiError } from '../api/client';
-import { beginLogin, redirectUri } from '../api/oauth';
+import { beginLogin, buildLoginScope, redirectUri } from '../api/oauth';
 import { useToast } from '../components/Toast';
+import { normalizeBaseUrl } from '../api/session';
 
 type Mode = 'pat' | 'sso';
 
@@ -28,16 +29,31 @@ export default function Login() {
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState('');
   const [clientId, setClientId] = useState('');
+  const [orgId, setOrgId] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function normalizeServerUrlInput(value = baseUrl) {
+    const normalized = normalizeBaseUrl(value);
+    setBaseUrl(normalized);
+    return normalized;
+  }
+
+  function onPasteServerUrl(e: ClipboardEvent<HTMLInputElement>) {
+    const pasted = e.clipboardData.getData('text');
+    if (!pasted.trim()) return;
+    e.preventDefault();
+    setBaseUrl(normalizeBaseUrl(pasted));
+  }
 
   async function onSubmitPat(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      await connect(baseUrl, token);
+      const normalizedBaseUrl = normalizeServerUrlInput();
+      await connect(normalizedBaseUrl, token);
       navigate('/', { replace: true });
     } catch (err) {
       const msg =
@@ -57,8 +73,9 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
+      const normalizedBaseUrl = normalizeServerUrlInput();
       // Redirects away to the instance's hosted login; returns via /callback.
-      await beginLogin(baseUrl, clientId);
+      await beginLogin(normalizedBaseUrl, clientId, orgId);
     } catch (err) {
       setError((err as Error).message);
       setLoading(false);
@@ -66,8 +83,8 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center p-6">
-      <div className="w-full max-w-md fade-up">
+    <div className="grid min-h-screen place-items-center p-6" data-testid="login-page">
+      <div className="w-full max-w-md fade-up" data-testid="login-card">
         <div className="mb-7 flex flex-col items-center text-center">
           <div className="mb-4 grid size-16 place-items-center rounded-2xl bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-[0_12px_40px_-10px_rgba(124,92,255,0.8)]">
             <svg viewBox="0 0 32 32" className="size-9">
@@ -82,7 +99,7 @@ export default function Login() {
 
         <div className="glass p-6">
           {/* Mode toggle */}
-          <div className="mb-5 flex gap-1 rounded-xl border border-white/10 bg-white/4 p-1">
+          <div className="mb-5 flex gap-1 rounded-xl border border-white/10 bg-white/4 p-1" data-testid="login-mode-tabs">
             {(
               [
                 ['pat', 'Access Token', KeyRound],
@@ -91,6 +108,8 @@ export default function Login() {
             ).map(([m, label, Icon]) => (
               <button
                 key={m}
+                type="button"
+                data-testid={`login-mode-${m}`}
                 onClick={() => {
                   setMode(m);
                   setError(null);
@@ -112,8 +131,11 @@ export default function Login() {
             <div className="relative">
               <Globe className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
               <Input
+                data-testid="login-server-url"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
+                onBlur={() => normalizeServerUrlInput()}
+                onPaste={onPasteServerUrl}
                 placeholder="https://your-instance.zitadel.cloud"
                 className="pl-9"
                 autoComplete="url"
@@ -123,7 +145,7 @@ export default function Login() {
           </Field>
 
           {mode === 'pat' ? (
-            <form onSubmit={onSubmitPat} className="mt-4 space-y-4">
+            <form onSubmit={onSubmitPat} className="mt-4 space-y-4" data-testid="login-pat-form">
               <Field
                 label="Personal Access Token (PAT)"
                 required
@@ -132,6 +154,7 @@ export default function Login() {
                 <div className="relative">
                   <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
                   <Input
+                    data-testid="login-pat-token"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder="paste token…"
@@ -141,6 +164,7 @@ export default function Login() {
                   />
                   <button
                     type="button"
+                    data-testid="login-toggle-pat-token-visibility"
                     onClick={() => setShowToken((v) => !v)}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--color-ink-dim)] hover:text-white"
                     tabIndex={-1}
@@ -154,6 +178,7 @@ export default function Login() {
 
               <Button
                 type="submit"
+                data-testid="login-pat-submit"
                 loading={loading}
                 disabled={!baseUrl.trim() || !token.trim()}
                 className="w-full"
@@ -163,7 +188,7 @@ export default function Login() {
               </Button>
             </form>
           ) : (
-            <form onSubmit={onSubmitSso} className="mt-4 space-y-4">
+            <form onSubmit={onSubmitSso} className="mt-4 space-y-4" data-testid="login-sso-form">
               <Field
                 label="Client ID"
                 required
@@ -172,6 +197,7 @@ export default function Login() {
                 <div className="relative">
                   <Fingerprint className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
                   <Input
+                    data-testid="login-sso-client-id"
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
                     placeholder="1234567890@project"
@@ -181,12 +207,32 @@ export default function Login() {
                 </div>
               </Field>
 
+              <Field
+                label="Organization ID"
+                hint="Optional. Adds the ZITADEL org scope for this login."
+              >
+                <div className="relative">
+                  <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-ink-dim)]" />
+                  <Input
+                    data-testid="login-sso-org-id"
+                    value={orgId}
+                    onChange={(e) => setOrgId(e.target.value)}
+                    placeholder="377588840665194465"
+                    className="pl-9"
+                    autoComplete="off"
+                  />
+                </div>
+              </Field>
+
+              <ScopeHint orgId={orgId} />
+
               <RedirectHint />
 
               {error && <ErrorNote text={error} />}
 
               <Button
                 type="submit"
+                data-testid="login-sso-submit"
                 loading={loading}
                 disabled={!baseUrl.trim() || !clientId.trim()}
                 className="w-full"
@@ -208,6 +254,7 @@ export default function Login() {
 
         <p className="mt-5 text-center text-xs text-[var(--color-ink-dim)]">
           <a
+            data-testid="login-github-link"
             href="https://github.com/paznoiro/zitadel-admin-console"
             target="_blank"
             rel="noopener noreferrer"
@@ -224,7 +271,7 @@ export default function Login() {
   function RedirectHint() {
     const uri = redirectUri();
     return (
-      <div className="rounded-xl border border-white/10 bg-white/4 px-3 py-2.5 text-[11px] text-[var(--color-ink-dim)]">
+      <div className="rounded-xl border border-white/10 bg-white/4 px-3 py-2.5 text-[11px] text-[var(--color-ink-dim)]" data-testid="login-redirect-hint">
         <p className="mb-1.5 flex items-center gap-1.5 font-medium text-[var(--color-ink)]">
           <Info className="size-3.5" /> Register this redirect URI on your app
         </p>
@@ -234,6 +281,7 @@ export default function Login() {
           </code>
           <button
             type="button"
+            data-testid="login-copy-redirect-uri"
             onClick={() => {
               navigator.clipboard.writeText(uri);
               toast.success('Redirect URI copied');
@@ -252,9 +300,20 @@ export default function Login() {
   }
 }
 
+function ScopeHint({ orgId }: { orgId: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/4 px-3 py-2.5 text-[11px] text-[var(--color-ink-dim)]" data-testid="login-sso-scope-hint">
+      <p className="mb-1.5 font-medium text-[var(--color-ink)]">OAuth scopes</p>
+      <code className="block overflow-x-auto whitespace-nowrap rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] text-[var(--color-ink)]" data-testid="login-sso-scope-value">
+        {buildLoginScope(orgId)}
+      </code>
+    </div>
+  );
+}
+
 function ErrorNote({ text }: { text: string }) {
   return (
-    <div className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+    <div className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200" data-testid="login-error">
       {text}
     </div>
   );

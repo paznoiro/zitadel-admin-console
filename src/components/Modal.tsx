@@ -18,7 +18,7 @@ export function Modal({
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'md' | 'lg' | 'xl';
+  size?: 'md' | 'lg' | 'xl' | '2xl' | 'fullscreen';
 }) {
   useEffect(() => {
     if (!open) return;
@@ -33,7 +33,17 @@ export function Modal({
 
   if (!open) return null;
 
-  const width = size === 'xl' ? 'max-w-3xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg';
+  const width =
+    size === 'fullscreen'
+      ? 'max-w-[min(96rem,calc(100vw-2rem))]'
+      : size === '2xl'
+      ? 'max-w-6xl'
+      : size === 'xl'
+        ? 'max-w-3xl'
+        : size === 'lg'
+          ? 'max-w-2xl'
+          : 'max-w-lg';
+  const bodyMaxHeight = size === 'fullscreen' ? 'calc(100vh - 11rem)' : '70vh';
 
   return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -42,7 +52,7 @@ export function Modal({
         onClick={onClose}
         aria-hidden
       />
-      <div className="flex min-h-full items-start justify-center p-4 py-8 sm:items-center">
+      <div className="flex min-h-full items-start justify-center p-4 py-8">
         <div
           role="dialog"
           aria-modal="true"
@@ -62,7 +72,7 @@ export function Modal({
               <X className="size-5" />
             </button>
           </div>
-          <div className="overflow-y-auto px-5 py-4" style={{ maxHeight: '70vh' }}>{children}</div>
+          <div className="overflow-y-auto px-5 py-4" style={{ maxHeight: bodyMaxHeight }}>{children}</div>
           {footer && (
             <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-3.5">{footer}</div>
           )}

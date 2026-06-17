@@ -142,19 +142,29 @@ export async function activateLabelPolicy(orgId: string): Promise<void> {
   await api.post(EP.orgLabelPolicyActivate(), {}, { orgId });
 }
 
-// Ensures a custom label policy exists before uploading — the assets API returns
-// 404 if no custom policy has been created for the org yet.
-async function ensureCustomLabelPolicy(orgId: string): Promise<void> {
+async function createCustomLabelPolicy(orgId: string): Promise<void> {
   try {
     await api.post(EP.orgLabelPolicy(), {}, { orgId });
-  } catch {
+  } catch (e) {
     // "already exists" conflict is fine — policy was already custom, carry on.
+    if (!(e instanceof ApiError && e.status === 409)) throw e;
+  }
+}
+
+// The assets API returns 404 if no custom policy has been created for the org.
+// Try the upload first so existing custom policies don't trigger a noisy 409.
+async function uploadLabelAsset(orgId: string, path: string, file: File): Promise<void> {
+  try {
+    await api.upload(path, file, { orgId });
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) throw e;
+    await createCustomLabelPolicy(orgId);
+    await api.upload(path, file, { orgId });
   }
 }
 
 export async function uploadOrgLogo(orgId: string, file: File, dark = false): Promise<void> {
-  await ensureCustomLabelPolicy(orgId);
-  await api.upload(dark ? EP.orgLabelPolicyLogoDarkUpload() : EP.orgLabelPolicyLogoUpload(), file, { orgId });
+  await uploadLabelAsset(orgId, dark ? EP.orgLabelPolicyLogoDarkUpload() : EP.orgLabelPolicyLogoUpload(), file);
 }
 
 export async function deleteOrgLogo(orgId: string, dark = false): Promise<void> {
@@ -162,8 +172,7 @@ export async function deleteOrgLogo(orgId: string, dark = false): Promise<void> 
 }
 
 export async function uploadOrgIcon(orgId: string, file: File, dark = false): Promise<void> {
-  await ensureCustomLabelPolicy(orgId);
-  await api.upload(dark ? EP.orgLabelPolicyIconDarkUpload() : EP.orgLabelPolicyIconUpload(), file, { orgId });
+  await uploadLabelAsset(orgId, dark ? EP.orgLabelPolicyIconDarkUpload() : EP.orgLabelPolicyIconUpload(), file);
 }
 
 export async function deleteOrgIcon(orgId: string, dark = false): Promise<void> {

@@ -18,14 +18,24 @@ const DISCOVERY = '/.well-known/openid-configuration';
 const PENDING_KEY = 'zitadel-admin.oauth-pending';
 
 // Scopes: openid/profile/email for identity, offline_access for a refresh token,
-// and the reserved aud scope so the token is accepted by the ZITADEL APIs.
-const SCOPES = [
+// optional org scoping, and the reserved aud scope so the token is accepted by
+// the ZITADEL APIs.
+const BASE_SCOPES = [
   'openid',
   'profile',
   'email',
   'offline_access',
-  'urn:zitadel:iam:org:project:id:zitadel:aud',
-].join(' ');
+];
+const ZITADEL_AUDIENCE_SCOPE = 'urn:zitadel:iam:org:project:id:zitadel:aud';
+
+export function buildLoginScope(orgIdRaw = ''): string {
+  const orgId = orgIdRaw.trim();
+  return [
+    ...BASE_SCOPES,
+    ...(orgId ? [`urn:zitadel:iam:org:id:${orgId}`] : []),
+    ZITADEL_AUDIENCE_SCOPE,
+  ].join(' ');
+}
 
 interface OidcConfig {
   authorization_endpoint: string;
@@ -39,15 +49,19 @@ interface PendingAuth {
   verifier: string;
   state: string;
   redirectUri: string;
+  scope: string;
 }
 
 export interface OidcLoginResult {
   baseUrl: string;
   token: string;
   refreshToken?: string;
+  idToken?: string;
+  tokenResponse: Record<string, unknown>;
   expiresIn?: number;
   clientId: string;
   tokenEndpoint: string;
+  scope: string;
 }
 
 export function redirectUri(): string {
@@ -88,10 +102,15 @@ async function sha256(input: string): Promise<Uint8Array> {
 
 // ---- Public flow -----------------------------------------------------------
 
-export async function beginLogin(baseUrlRaw: string, clientIdRaw: string): Promise<void> {
+export async function beginLogin(
+  baseUrlRaw: string,
+  clientIdRaw: string,
+  orgIdRaw = '',
+): Promise<void> {
   const baseUrl = normalizeBaseUrl(baseUrlRaw);
   const clientId = clientIdRaw.trim();
   if (!baseUrl || !clientId) throw new Error('Server URL and Client ID are both required.');
+  const scope = buildLoginScope(orgIdRaw);
 
   const cfg = await fetchOidcConfig(baseUrl);
   const verifier = randomToken(48);
@@ -99,14 +118,14 @@ export async function beginLogin(baseUrlRaw: string, clientIdRaw: string): Promi
   const state = randomToken(16);
   const uri = redirectUri();
 
-  const pending: PendingAuth = { baseUrl, clientId, verifier, state, redirectUri: uri };
+  const pending: PendingAuth = { baseUrl, clientId, verifier, state, redirectUri: uri, scope };
   sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
 
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: uri,
     response_type: 'code',
-    scope: SCOPES,
+    scope,
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
@@ -164,9 +183,12 @@ export async function completeLogin(search: string): Promise<OidcLoginResult> {
     baseUrl: pending.baseUrl,
     token: String(data.access_token),
     refreshToken: data.refresh_token as string | undefined,
+    idToken: data.id_token as string | undefined,
+    tokenResponse: data,
     expiresIn: typeof data.expires_in === 'number' ? data.expires_in : undefined,
     clientId: pending.clientId,
     tokenEndpoint: cfg.token_endpoint,
+    scope: pending.scope,
   };
 }
 
@@ -183,7 +205,7 @@ export async function refreshAccessToken(): Promise<boolean> {
     grant_type: 'refresh_token',
     refresh_token: s.refreshToken,
     client_id: s.clientId,
-    scope: SCOPES,
+    scope: s.oauthScope ?? buildLoginScope(),
   });
   try {
     const res = await fetch(s.tokenEndpoint, {
@@ -193,9 +215,18 @@ export async function refreshAccessToken(): Promise<boolean> {
     });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok || !data.access_token) return false;
+    const nextRefreshToken = (data.refresh_token as string | undefined) ?? s.refreshToken;
     patchSession({
       token: String(data.access_token),
-      refreshToken: (data.refresh_token as string) ?? s.refreshToken,
+      refreshToken: nextRefreshToken,
+      idToken: (data.id_token as string | undefined) ?? s.idToken,
+      tokenResponse: {
+        ...(s.tokenResponse ?? {}),
+        ...data,
+        access_token: String(data.access_token),
+        refresh_token: nextRefreshToken,
+        ...(data.id_token ? { id_token: data.id_token } : s.idToken ? { id_token: s.idToken } : {}),
+      },
       expiresAt:
         typeof data.expires_in === 'number' ? Date.now() + data.expires_in * 1000 : undefined,
     });

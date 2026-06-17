@@ -20,8 +20,11 @@ export default function Callback() {
         await connect(result.baseUrl, result.token, {
           kind: 'oidc',
           refreshToken: result.refreshToken,
+          idToken: result.idToken,
+          tokenResponse: result.tokenResponse,
           clientId: result.clientId,
           tokenEndpoint: result.tokenEndpoint,
+          oauthScope: result.scope,
           expiresIn: result.expiresIn,
         });
         navigate('/', { replace: true });
@@ -33,8 +36,8 @@ export default function Callback() {
   }, []);
 
   return (
-    <div className="grid min-h-screen place-items-center p-6">
-      <div className="glass w-full max-w-md p-8 text-center fade-up">
+    <div className="grid min-h-screen place-items-center p-6" data-testid="callback-page">
+      <div className="glass w-full max-w-md p-8 text-center fade-up" data-testid={error ? 'callback-error-card' : 'callback-loading-card'}>
         {error ? (
           <>
             <div className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-rose-500/15 text-rose-300">
@@ -43,6 +46,7 @@ export default function Callback() {
             <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
             <p className="mx-auto mt-2 max-w-sm text-sm text-[var(--color-ink-dim)]">{error}</p>
             <Button
+              data-testid="callback-back-to-login"
               className="mt-6"
               variant="ghost"
               icon={<ArrowLeft className="size-4" />}

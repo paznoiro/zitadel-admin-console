@@ -96,6 +96,7 @@ export interface CreateOIDCAppInput {
   grantTypes?: string[];
   responseTypes?: string[];
   devMode?: boolean;
+  accessTokenType?: string; // OIDC_TOKEN_TYPE_BEARER | OIDC_TOKEN_TYPE_JWT
 }
 
 export interface CreateOIDCAppResult {
@@ -120,7 +121,7 @@ export async function createOIDCApp(
       appType: input.appType ?? 'OIDC_APP_TYPE_WEB',
       authMethodType: input.authMethodType ?? 'OIDC_AUTH_METHOD_TYPE_BASIC',
       developmentMode: input.devMode ?? false,
-      accessTokenType: 'OIDC_TOKEN_TYPE_BEARER',
+      accessTokenType: input.accessTokenType ?? 'OIDC_TOKEN_TYPE_BEARER',
       accessTokenRoleAssertion: true,
       idTokenRoleAssertion: true,
       idTokenUserinfoAssertion: true,

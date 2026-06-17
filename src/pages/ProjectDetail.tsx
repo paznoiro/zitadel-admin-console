@@ -915,6 +915,7 @@ function CreateAppModal({
   const [name, setName] = useState('');
   const [appType, setAppType] = useState('OIDC_APP_TYPE_WEB');
   const [authMethod, setAuthMethod] = useState('OIDC_AUTH_METHOD_TYPE_BASIC');
+  const [accessTokenType, setAccessTokenType] = useState('OIDC_TOKEN_TYPE_BEARER');
   const [redirects, setRedirects] = useState('');
   const [postLogoutRedirects, setPostLogoutRedirects] = useState('');
   const [devMode, setDevMode] = useState(false);
@@ -936,6 +937,7 @@ function CreateAppModal({
               .filter(Boolean),
             appType,
             authMethodType: authMethod,
+            accessTokenType,
             devMode,
           },
         );
@@ -1019,6 +1021,12 @@ function CreateAppModal({
                 </Select>
               </Field>
             </div>
+            <Field label="Access token type">
+              <Select value={accessTokenType} onChange={(e) => setAccessTokenType(e.target.value)}>
+                <option value="OIDC_TOKEN_TYPE_BEARER">Bearer (opaque)</option>
+                <option value="OIDC_TOKEN_TYPE_JWT">JWT</option>
+              </Select>
+            </Field>
             <Field label="Redirect URIs" hint="One per line or comma-separated.">
               <textarea
                 value={redirects}

@@ -19,8 +19,11 @@ export interface ZitadelSession {
 
   // ---- OIDC-only fields (enable silent token refresh) ----
   refreshToken?: string;
+  idToken?: string;
+  tokenResponse?: Record<string, unknown>;
   clientId?: string;
   tokenEndpoint?: string;
+  oauthScope?: string;
   /** Epoch ms when the access token expires. */
   expiresAt?: number;
 }
@@ -33,7 +36,11 @@ export function normalizeBaseUrl(url: string): string {
   let u = url.trim();
   if (!u) return u;
   if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
-  return u.replace(/\/+$/, '');
+  try {
+    return new URL(u).origin;
+  } catch {
+    return u.replace(/\/+$/, '');
+  }
 }
 
 export function loadSession(): ZitadelSession | null {

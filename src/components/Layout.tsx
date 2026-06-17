@@ -17,10 +17,12 @@ import {
   ShieldCheck,
   Github,
   Terminal,
+  FileJson2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDevHints } from '../context/DevHintsContext';
 import { cn } from './ui';
+import { TokenViewerModal } from './TokenViewerModal';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -38,9 +40,10 @@ export function Layout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen" data-testid="app-shell">
       {/* Sidebar */}
       <aside
+        data-testid="app-sidebar"
         className={cn(
           'fixed inset-y-0 left-0 z-40 w-[260px] shrink-0 p-4 transition-transform md:static md:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-[110%]',
@@ -48,10 +51,11 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         <div className="glass flex h-full flex-col p-4">
           <Brand />
-          <nav className="mt-6 flex flex-1 flex-col gap-1">
+          <nav className="mt-6 flex flex-1 flex-col gap-1" data-testid="app-sidebar-nav">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
+                data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                 to={item.to}
                 end={item.end}
                 onClick={() => setMobileOpen(false)}
@@ -83,7 +87,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onMenu={() => setMobileOpen((v) => !v)} mobileOpen={mobileOpen} />
-        <main className="flex-1 px-4 pb-10 pt-2 md:px-8">
+        <main className="flex-1 px-4 pb-10 pt-2 md:px-8" data-testid="app-main">
           <div className="mx-auto w-full max-w-6xl fade-up">{children}</div>
         </main>
       </div>
@@ -93,7 +97,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3 px-1">
+    <div className="flex items-center gap-3 px-1" data-testid="app-brand">
       <div className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-2)] shadow-lg">
         <svg viewBox="0 0 32 32" className="size-6">
           <path d="M9 22 L16 8 L23 22 Z" fill="white" fillOpacity="0.95" />
@@ -104,6 +108,7 @@ function Brand() {
         <p className="text-[11px] text-[var(--color-ink-dim)]">Admin Console</p>
       </div>
       <a
+        data-testid="app-github-link"
         href="https://github.com/paznoiro/zitadel-admin-console"
         target="_blank"
         rel="noopener noreferrer"
@@ -118,23 +123,45 @@ function Brand() {
 
 function ConnectionFooter() {
   const { session, disconnect } = useAuth();
+  const [tokenViewerOpen, setTokenViewerOpen] = useState(false);
   return (
-    <div className="mt-4 border-t border-white/10 pt-3">
+    <div className="mt-4 border-t border-white/10 pt-3" data-testid="connection-footer">
       <div className="mb-2 px-1">
-        <p className="truncate text-[11px] font-medium text-[var(--color-ink)]">
+        <p className="truncate text-[11px] font-medium text-[var(--color-ink)]" data-testid="connection-label">
           {session?.label ?? 'Connected'}
         </p>
-        <p className="text-[10px] text-[var(--color-ink-dim)]">
-          {session?.kind === 'oidc' ? 'Single Sign-On (OIDC)' : 'Access token session'}
-        </p>
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <p className="text-[10px] text-[var(--color-ink-dim)]">
+            {session?.kind === 'oidc' ? 'Single Sign-On (OIDC)' : 'Access token session'}
+          </p>
+          {session?.kind === 'oidc' && (
+            <button
+              type="button"
+              data-testid="connection-view-token-response"
+              onClick={() => setTokenViewerOpen(true)}
+              className="grid size-7 place-items-center rounded-lg border border-cyan-300/20 bg-cyan-300/10 text-cyan-200 transition hover:bg-cyan-300/20 hover:text-white"
+              title="View OIDC token response"
+            >
+              <FileJson2 className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       <button
+        data-testid="connection-disconnect"
         onClick={disconnect}
         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-ink-dim)] transition hover:bg-rose-500/10 hover:text-rose-300"
       >
         <LogOut className="size-4" />
         Disconnect
       </button>
+      {session?.kind === 'oidc' && (
+        <TokenViewerModal
+          open={tokenViewerOpen}
+          onClose={() => setTokenViewerOpen(false)}
+          session={session}
+        />
+      )}
     </div>
   );
 }
@@ -142,9 +169,10 @@ function ConnectionFooter() {
 function TopBar({ onMenu, mobileOpen }: { onMenu: () => void; mobileOpen: boolean }) {
   const { showHints, toggle } = useDevHints();
   return (
-    <header className="sticky top-0 z-20 px-4 py-3 md:px-8">
+    <header className="sticky top-0 z-20 px-4 py-3 md:px-8" data-testid="app-topbar">
       <div className="glass-soft glass flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
         <button
+          data-testid="mobile-menu-toggle"
           onClick={onMenu}
           className="grid size-9 place-items-center rounded-lg text-[var(--color-ink-dim)] hover:bg-white/10 hover:text-white md:hidden"
         >
@@ -155,6 +183,7 @@ function TopBar({ onMenu, mobileOpen }: { onMenu: () => void; mobileOpen: boolea
         </div>
         {showHints && (
           <button
+            data-testid="api-hints-toggle"
             onClick={toggle}
             title="Ctrl+1 to toggle API hints off"
             className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 transition hover:bg-sky-400/20"
@@ -180,8 +209,9 @@ function OrgSwitcher() {
   const active = orgs.find((o) => o.id === activeOrgId);
 
   return (
-    <div className="relative">
+    <div className="relative" data-testid="org-switcher">
       <button
+        data-testid="org-switcher-toggle"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm transition hover:bg-white/10"
       >
@@ -193,8 +223,8 @@ function OrgSwitcher() {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-2 max-h-[60vh] w-72 overflow-y-auto rounded-[var(--radius-glass)] border border-white/12 bg-[#0d1127] p-2 shadow-2xl">
+          <div className="fixed inset-0 z-10" data-testid="org-switcher-backdrop" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-2 max-h-[60vh] w-72 overflow-y-auto rounded-[var(--radius-glass)] border border-white/12 bg-[#0d1127] p-2 shadow-2xl" data-testid="org-switcher-menu">
             <p className="px-2 py-1 text-[11px] uppercase tracking-wide text-[var(--color-ink-dim)]">
               Active organization
             </p>
@@ -204,6 +234,7 @@ function OrgSwitcher() {
             {orgs.map((o) => (
               <button
                 key={o.id}
+                data-testid={`org-switcher-option-${o.id}`}
                 onClick={() => {
                   setActiveOrg(o.id);
                   setOpen(false);
@@ -220,6 +251,7 @@ function OrgSwitcher() {
               </button>
             ))}
             <button
+              data-testid="org-switcher-manage"
               onClick={() => {
                 setOpen(false);
                 navigate('/organizations');
