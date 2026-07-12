@@ -51,13 +51,21 @@ export async function createUserGrant(
 }
 
 export async function updateUserGrant(
-  userId: string,
+  _userId: string,
   grantId: string,
   roleKeys: string[],
 ): Promise<void> {
-  await api.put(EP.userGrantUpdate(userId, grantId), { roleKeys });
+  await api.post(
+    EP.authorizationUpdate(),
+    { id: grantId, roleKeys },
+    { extraHeaders: CONNECT_HDR },
+  );
 }
 
-export async function deleteUserGrant(userId: string, grantId: string): Promise<void> {
-  await api.delete(EP.userGrantDelete(userId, grantId));
+export async function deleteUserGrant(_userId: string, grantId: string): Promise<void> {
+  await api.post(
+    EP.authorizationDelete(),
+    { id: grantId },
+    { extraHeaders: CONNECT_HDR },
+  );
 }

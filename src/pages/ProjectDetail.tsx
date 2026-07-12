@@ -95,6 +95,18 @@ export default function ProjectDetail() {
   const location = useLocation();
   const navState = location.state as { name?: string; projectRoleCheck?: boolean } | null;
   const [tab, setTab] = useState<Tab>('apps');
+  const { activeOrgId } = useAuth();
+  const initialOrgIdRef = useRef(activeOrgId);
+
+  useEffect(() => {
+    if (!initialOrgIdRef.current && activeOrgId) {
+      initialOrgIdRef.current = activeOrgId;
+      return;
+    }
+    if (initialOrgIdRef.current && activeOrgId && activeOrgId !== initialOrgIdRef.current) {
+      navigate('/projects');
+    }
+  }, [activeOrgId, navigate]);
 
   return (
     <>

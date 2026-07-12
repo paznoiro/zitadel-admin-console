@@ -144,6 +144,8 @@ export const EP = {
   // ---- Authorization service (zitadel.authorization.v2 Connect RPC) ----
   authorizationList: () => `/zitadel.authorization.v2.AuthorizationService/ListAuthorizations`,
   authorizationCreate: () => `/zitadel.authorization.v2.AuthorizationService/CreateAuthorization`,
+  authorizationUpdate: () => `/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization`,
+  authorizationDelete: () => `/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization`,
 
   // ---- User grants — update/delete still on management v1 ----
   userGrantUpdate: (userId: string, grantId: string) =>
