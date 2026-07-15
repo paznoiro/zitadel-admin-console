@@ -190,3 +190,13 @@ export async function deactivateUser(userId: string): Promise<void> {
 export async function reactivateUser(userId: string): Promise<void> {
   await api.post(EP.userReactivate(userId), {});
 }
+
+export async function makeUserOrgAdmin(userId: string, orgId: string): Promise<void> {
+  await api.post(EP.createAdministrator(), {
+    userId,
+    resource: {
+      organization: { organizationId: orgId }
+    },
+    roles: ["ORG_OWNER"]
+  });
+}

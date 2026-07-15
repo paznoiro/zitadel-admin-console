@@ -147,6 +147,9 @@ export const EP = {
   authorizationUpdate: () => `/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization`,
   authorizationDelete: () => `/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization`,
 
+  // ---- Internal Permission service (Connect RPC) ----
+  createAdministrator: () => `/zitadel.internal_permission.v2.InternalPermissionService/CreateAdministrator`,
+
   // ---- User grants — update/delete still on management v1 ----
   userGrantUpdate: (userId: string, grantId: string) =>
     `/management/v1/users/${userId}/grants/${grantId}`,

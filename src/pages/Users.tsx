@@ -15,7 +15,7 @@ import {
   FileDown,
   ShieldCheck,
 } from 'lucide-react';
-import { deactivateUser, deleteUser, listUsers, reactivateUser } from '../api/users';
+import { deactivateUser, deleteUser, listUsers, reactivateUser, makeUserOrgAdmin } from '../api/users';
 import { listProjects, listRoles } from '../api/projects';
 import {
   listUserGrants,
@@ -102,6 +102,28 @@ export default function Users() {
     },
     onError: (e: Error) => toast.error('Could not update user', e.message),
   });
+
+  const makeAdminM = useMutation({
+    mutationFn: (id: string) => makeUserOrgAdmin(id, activeOrgId!),
+    onSuccess: () => {
+      toast.success('User granted Organization Admin role');
+      invalidate();
+    },
+    onError: (e: Error) => toast.error('Could not grant admin role', e.message),
+  });
+
+  async function onMakeAdmin(id: string, label: string) {
+    const ok = await confirm({
+      title: 'Make Organization Admin',
+      message: (
+        <>
+          Grant <strong>ORG_OWNER</strong> role to <strong className="text-white">{label}</strong>?
+        </>
+      ),
+      confirmLabel: 'Confirm',
+    });
+    if (ok) makeAdminM.mutate(id);
+  }
 
   async function onDelete(id: string, label: string) {
     const ok = await confirm({
@@ -336,6 +358,15 @@ export default function Users() {
                       className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
                     >
                       {active ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
+                    </button>
+                  </HintWrap>
+                  <HintWrap hint="POST /zitadel.internal_permission.v2.InternalPermissionService/CreateAdministrator">
+                    <button
+                      onClick={() => onMakeAdmin(u.userId, name)}
+                      title="Make Org Admin"
+                      className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-sky-500/10 hover:text-sky-300 group-hover:opacity-100"
+                    >
+                      <ShieldCheck className="size-4" />
                     </button>
                   </HintWrap>
                   <HintWrap hint="DELETE /v2/users/{id}">
