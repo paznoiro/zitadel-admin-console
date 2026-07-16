@@ -195,7 +195,9 @@ export async function makeUserOrgAdmin(userId: string, orgId: string): Promise<v
   await api.post(EP.createAdministrator(), {
     userId,
     resource: {
-      organization: { organizationId: orgId }
+      // ResourceType.resource oneof — for an org this is a plain string
+      // field `organizationId`, not a nested `organization` message.
+      organizationId: orgId
     },
     roles: ["ORG_OWNER"]
   });
