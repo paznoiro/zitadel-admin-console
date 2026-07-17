@@ -3,6 +3,8 @@ import { EP } from './endpoints';
 
 export interface UserGrant {
   id: string;
+  /** Owning user — present in list responses (nested `user.id` or flat `userId`). */
+  userId?: string;
   projectId: string;
   projectName?: string;
   roleKeys: string[];
@@ -17,9 +19,12 @@ interface AuthorizationListResponse {
 
 function normalizeGrant(raw: Record<string, unknown>): UserGrant {
   const project = raw.project as Record<string, unknown> | undefined;
+  const user = raw.user as Record<string, unknown> | undefined;
   const roles = (raw.roles as Array<Record<string, unknown>> | undefined) ?? [];
+  const userId = raw.userId ?? user?.id;
   return {
     id: String(raw.id ?? ''),
+    userId: userId ? String(userId) : undefined,
     projectId: String(project?.id ?? ''),
     projectName: project?.name as string | undefined,
     roleKeys: roles.map((r) => String(r.key ?? '')).filter(Boolean),

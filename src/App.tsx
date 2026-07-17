@@ -13,6 +13,7 @@ import Applications from './pages/Applications';
 import Users from './pages/Users';
 import BulkUsers from './pages/BulkUsers';
 import DuplicateOrg from './pages/DuplicateOrg';
+import OrgTransfer from './pages/OrgTransfer';
 import Events from './pages/Events';
 import IdentityProviders from './pages/IdentityProviders';
 
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/users" element={<Users />} />
           <Route path="/bulk-users" element={<BulkUsers />} />
           <Route path="/duplicate" element={<DuplicateOrg />} />
+          <Route path="/transfer" element={<OrgTransfer />} />
           <Route path="/events" element={<Events />} />
           <Route path="/identity-providers" element={<IdentityProviders />} />
           <Route path="/login" element={<Navigate to="/" replace />} />

@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Activity,
+  ArrowLeftRight,
   ShieldCheck,
   Github,
   Terminal,
@@ -32,6 +33,7 @@ const NAV = [
   { to: '/users', label: 'Users', icon: Users },
   { to: '/bulk-users', label: 'Bulk Import', icon: Upload },
   { to: '/duplicate', label: 'Duplicate Org', icon: CopyPlus },
+  { to: '/transfer', label: 'Export / Import', icon: ArrowLeftRight },
   { to: '/identity-providers', label: 'Identity Providers', icon: ShieldCheck },
   { to: '/events', label: 'Event Log', icon: Activity },
 ];

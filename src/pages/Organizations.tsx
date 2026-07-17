@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, Search, Trash2, CopyPlus, Check, Star, Pencil, Palette, Settings, Upload, X, Copy, Globe, Hash } from 'lucide-react';
+import { Building2, Plus, Search, Trash2, CopyPlus, Check, Star, Pencil, Palette, Settings, Upload, X, Copy, Globe, Hash, Download, Loader2 } from 'lucide-react';
 import {
   createOrganization,
   deleteOrganization,
@@ -16,6 +16,8 @@ import {
   updateOrganization,
 } from '../api/orgs';
 import type { LabelPolicy } from '../api/orgs';
+import { downloadOrgExport, exportCounts, exportOrganization, type TransferStep } from '../api/transfer';
+import { StepRow } from '../components/StepLog';
 import type { Organization } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { getSession } from '../api/session';
@@ -70,6 +72,12 @@ export default function Organizations() {
   const [editName, setEditName] = useState('');
   const [brandingOrg, setBrandingOrg] = useState<Organization | null>(null);
   const [settingsOrg, setSettingsOrg] = useState<Organization | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  // Modal stays visible while the export gathers data; it auto-closes on
+  // success (the file download takes over) and stays open on failure so the
+  // failed step is visible.
+  const [exportModalOrg, setExportModalOrg] = useState<Organization | null>(null);
+  const [exportSteps, setExportSteps] = useState<TransferStep[]>([]);
 
   const orgsQ = useQuery({
     queryKey: ['organizations', search],
@@ -125,6 +133,27 @@ export default function Organizations() {
     if (ok) deleteM.mutate(id);
   }
 
+  async function onExport(o: Organization) {
+    setExportingId(o.id);
+    setExportModalOrg(o);
+    setExportSteps([]);
+    try {
+      const data = await exportOrganization({ id: o.id, name: o.name }, setExportSteps);
+      const file = downloadOrgExport(data);
+      const c = exportCounts(data);
+      setExportModalOrg(null);
+      toast.success(
+        'Organization exported',
+        `${file} — ${c.projects} projects, ${c.apps} apps, ${c.roles} roles, ${c.users} users, ` +
+          `${c.grants} grants, ${c.settings} custom settings`,
+      );
+    } catch (e) {
+      toast.error('Export failed', (e as Error).message);
+    } finally {
+      setExportingId(null);
+    }
+  }
+
   const orgs = orgsQ.data?.organizations ?? [];
 
   return (
@@ -134,9 +163,19 @@ export default function Organizations() {
         subtitle="Tenants of your ZITADEL instance."
         icon={<Building2 className="size-5" />}
         actions={
-          <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-            New Organization
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="subtle"
+              icon={<Upload className="size-4" />}
+              onClick={() => navigate('/transfer')}
+              title="Import an org export file into this instance"
+            >
+              Import
+            </Button>
+            <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
+              New Organization
+            </Button>
+          </div>
         }
       />
 
@@ -251,6 +290,18 @@ export default function Organizations() {
                     Duplicate
                   </Button>
                   <button
+                    onClick={() => onExport(o)}
+                    disabled={exportingId === o.id}
+                    className="rounded-lg p-2 text-[var(--color-ink-dim)] transition hover:bg-white/10 hover:text-emerald-300 disabled:opacity-60"
+                    title="Export data (projects, apps, roles, users) to a JSON file"
+                  >
+                    {exportingId === o.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                  </button>
+                  <button
                     onClick={() => setBrandingOrg(o)}
                     className="rounded-lg p-2 text-[var(--color-ink-dim)] transition hover:bg-white/10 hover:text-violet-300"
                     title="Branding"
@@ -353,6 +404,33 @@ export default function Organizations() {
             }
           />
         </Field>
+      </Modal>
+
+      <Modal
+        open={!!exportModalOrg}
+        onClose={() => {
+          if (!exportingId) setExportModalOrg(null);
+        }}
+        title="Exporting organization"
+        description={exportModalOrg?.name}
+        footer={
+          <Button variant="ghost" disabled={!!exportingId} onClick={() => setExportModalOrg(null)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="max-h-[320px] space-y-1 overflow-y-auto pr-1">
+          {exportSteps.length === 0 ? (
+            <p className="flex items-center gap-2 px-2 py-1.5 text-sm text-[var(--color-ink-dim)]">
+              <Loader2 className="size-4 animate-spin" /> Starting export…
+            </p>
+          ) : (
+            exportSteps.map((s) => <StepRow key={s.id} step={s} />)
+          )}
+        </div>
+        <p className="mt-3 text-[11px] text-[var(--color-ink-dim)]">
+          The download starts automatically when everything has been gathered.
+        </p>
       </Modal>
 
       {brandingOrg && (

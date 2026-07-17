@@ -88,6 +88,8 @@ export interface LabelPolicy {
   fontColorDark?: string;
   hideLoginNameSuffix?: boolean;
   disableWatermark?: boolean;
+  /** THEME_MODE_AUTO | _LIGHT | _DARK */
+  themeMode?: string;
   logoUrl?: string;
   logoDarkUrl?: string;
   iconUrl?: string;
@@ -109,6 +111,7 @@ export async function getLabelPolicy(orgId: string): Promise<LabelPolicy> {
     fontColorDark: p.fontColorDark as string | undefined,
     hideLoginNameSuffix: p.hideLoginNameSuffix as boolean | undefined,
     disableWatermark: p.disableWatermark as boolean | undefined,
+    themeMode: p.themeMode as string | undefined,
     logoUrl: p.logoUrl as string | undefined,
     logoDarkUrl: (p.logoUrlDark ?? p.logoDarkUrl) as string | undefined,
     iconUrl: p.iconUrl as string | undefined,
