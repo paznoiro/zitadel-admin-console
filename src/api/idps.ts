@@ -134,7 +134,7 @@ export interface CreateOIDCIDPInput {
   isAutoRegister?: boolean;
 }
 
-export async function createOIDCIDP(input: CreateOIDCIDPInput): Promise<string> {
+export async function createOIDCIDP(input: CreateOIDCIDPInput, orgId?: string): Promise<string> {
   const res = await api.post<Record<string, unknown>>(EP.idpCreateOIDC(), {
     name: input.name,
     issuer: input.issuer,
@@ -144,7 +144,7 @@ export async function createOIDCIDP(input: CreateOIDCIDPInput): Promise<string> 
     displayNameMapping: input.displayNameMapping ?? 'IDP_CONFIG_MAPPING_FIELD_PREFERRED_USERNAME',
     usernameMapping: input.usernameMapping ?? 'IDP_CONFIG_MAPPING_FIELD_EMAIL',
     isAutoRegister: input.isAutoRegister ?? false,
-  });
+  }, orgId ? { orgId } : undefined);
   return String(res.id ?? res.idpId ?? '');
 }
 
@@ -159,7 +159,7 @@ export interface CreateOAuthIDPInput {
   idAttribute?: string;
 }
 
-export async function createOAuthIDP(input: CreateOAuthIDPInput): Promise<string> {
+export async function createOAuthIDP(input: CreateOAuthIDPInput, orgId?: string): Promise<string> {
   const res = await api.post<Record<string, unknown>>(EP.idpCreateOAuth(), {
     name: input.name,
     clientId: input.clientId,
@@ -169,7 +169,7 @@ export async function createOAuthIDP(input: CreateOAuthIDPInput): Promise<string
     userEndpoint: input.userEndpoint,
     scopes: input.scopes ?? ['openid', 'profile', 'email'],
     idAttribute: input.idAttribute ?? 'sub',
-  });
+  }, orgId ? { orgId } : undefined);
   return String(res.id ?? res.idpId ?? '');
 }
 
@@ -181,14 +181,14 @@ export interface CreateJWTIDPInput {
   headerName?: string;
 }
 
-export async function createJWTIDP(input: CreateJWTIDPInput): Promise<string> {
+export async function createJWTIDP(input: CreateJWTIDPInput, orgId?: string): Promise<string> {
   const res = await api.post<Record<string, unknown>>(EP.idpCreateJWT(), {
     name: input.name,
     jwtEndpoint: input.jwtEndpoint,
     issuer: input.issuer,
     keysEndpoint: input.keysEndpoint,
     headerName: input.headerName ?? 'authorization',
-  });
+  }, orgId ? { orgId } : undefined);
   return String(res.id ?? res.idpId ?? '');
 }
 

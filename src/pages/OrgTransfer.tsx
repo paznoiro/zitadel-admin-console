@@ -14,6 +14,7 @@ import {
   Play,
   Settings,
   ShieldCheck,
+  ShieldPlus,
   Upload,
   Users as UsersIcon,
 } from 'lucide-react';
@@ -85,6 +86,7 @@ export default function OrgTransfer() {
   const [includeApps, setIncludeApps] = useState(true);
   const [includeUsers, setIncludeUsers] = useState(true);
   const [includeGrants, setIncludeGrants] = useState(true);
+  const [includeIdps, setIncludeIdps] = useState(true);
   const [includeSettings, setIncludeSettings] = useState(true);
   const [steps, setSteps] = useState<TransferStep[]>([]);
   const [running, setRunning] = useState(false);
@@ -126,6 +128,7 @@ export default function OrgTransfer() {
           includeUsers,
           // grants reference users + project roles, so they need both imported
           includeGrants: includeGrants && includeUsers && includeRoles,
+          includeIdps,
           includeSettings,
         },
         setSteps,
@@ -202,14 +205,16 @@ export default function OrgTransfer() {
             <span>
               — {lastExport.counts.projects} projects, {lastExport.counts.apps} apps,{' '}
               {lastExport.counts.roles} roles, {lastExport.counts.users} users,{' '}
-              {lastExport.counts.grants} grants, {lastExport.counts.settings} custom settings
+              {lastExport.counts.grants} grants, {lastExport.counts.idps} IDPs,{' '}
+              {lastExport.counts.settings} custom settings
             </span>
           </p>
         )}
         <p className="mt-3 text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
           The file contains projects, project roles, applications (OIDC &amp; API config), users,
-          user grants and org settings (policies, branding colors and logo/icon images, embedded as
-          base64). Application secrets and user passwords cannot be read, so they are not included.
+          user grants, identity providers (OIDC/OAuth/JWT config) and org settings (policies,
+          branding colors and logo/icon images, embedded as base64). Application secrets, IDP client
+          secrets and user passwords cannot be read, so they are not included.
         </p>
       </div>
 
@@ -246,7 +251,7 @@ export default function OrgTransfer() {
                 <span className="mt-1 block text-[11px] text-[var(--color-ink-dim)]">
                   Org “{data.org.name}” — {fileCounts?.projects} projects, {fileCounts?.apps} apps,{' '}
                   {fileCounts?.roles} roles, {fileCounts?.users} users, {fileCounts?.grants} grants,{' '}
-                  {fileCounts?.settings} custom settings
+                  {fileCounts?.idps} IDPs, {fileCounts?.settings} custom settings
                   {data.sourceInstance ? ` · from ${data.sourceInstance}` : ''}
                 </span>
               </span>
@@ -311,6 +316,14 @@ export default function OrgTransfer() {
               checked={includeGrants && includeUsers && includeRoles}
               disabled={running || !includeUsers || !includeRoles}
               onChange={setIncludeGrants}
+            />
+            <Toggle
+              icon={<ShieldPlus className="size-4" />}
+              label="Identity providers"
+              description="OIDC/OAuth/JWT config; client secrets must be re-entered"
+              checked={includeIdps}
+              disabled={running}
+              onChange={setIncludeIdps}
             />
             <Toggle
               icon={<Settings className="size-4" />}

@@ -12,6 +12,8 @@ import { createProject, createRole, listProjects, listRoles } from './projects';
 import { createAPIApp, createOIDCApp, listApps } from './apps';
 import { addHumanUser, addMachineUser, listUsers } from './users';
 import { createUserGrant, listUserGrants } from './grants';
+import { createJWTIDP, createOAuthIDP, createOIDCIDP, listIDPs } from './idps';
+import type { IdentityProvider, IDPOptions, IDPRawType } from './idps';
 import {
   getDomainPolicy,
   getLockoutPolicy,
@@ -54,7 +56,8 @@ import type { User } from './types';
 
 export const EXPORT_FORMAT = 'zitadel-org-export' as const;
 // v1: projects/roles/apps/users. v2 adds user grants + org settings (policies & branding colors).
-export const EXPORT_VERSION = 2;
+// v3 adds the org's external identity providers (OIDC / OAuth / JWT config).
+export const EXPORT_VERSION = 3;
 
 export interface ExportedRole {
   key: string;
@@ -108,6 +111,42 @@ export interface ExportedUser {
   machine?: { name?: string; description?: string };
 }
 
+/**
+ * An org-level external identity provider (Google, Okta, a custom OIDC/OAuth/JWT
+ * provider, …). Only the three types this console can recreate are exported —
+ * v2beta social presets and SAML providers are managed outside the v1 API and
+ * are skipped. Client secrets cannot be read back from the source (same as app
+ * secrets), so the recreated provider has an empty secret that must be re-entered.
+ */
+export interface ExportedIDP {
+  id: string;
+  name: string;
+  type: 'OIDC' | 'OAUTH' | 'JWT';
+  options?: IDPOptions;
+  oidc?: {
+    issuer: string;
+    clientId: string;
+    scopes?: string[];
+    displayNameMapping?: string;
+    usernameMapping?: string;
+    isAutoRegister?: boolean;
+  };
+  oauth?: {
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    userEndpoint: string;
+    scopes?: string[];
+    idAttribute?: string;
+  };
+  jwt?: {
+    jwtEndpoint: string;
+    issuer: string;
+    keysEndpoint: string;
+    headerName?: string;
+  };
+}
+
 /** A project-role authorization; ids reference the *source* instance and are remapped on import. */
 export interface ExportedGrant {
   userId: string;
@@ -151,6 +190,7 @@ export interface OrgExportFile {
   projects: ExportedProject[];
   users: ExportedUser[];
   grants: ExportedGrant[];
+  idps: ExportedIDP[];
   settings?: ExportedSettings;
 }
 
@@ -179,6 +219,66 @@ function toExportedUser(u: User): ExportedUser {
       preferredLanguage: u.human?.profile?.preferredLanguage,
     },
   };
+}
+
+/** The recreatable IDP family, or 'OTHER' for social presets / SAML we skip. */
+function idpFamily(t: IDPRawType): 'OIDC' | 'OAUTH' | 'JWT' | 'OTHER' {
+  if (t.includes('OAUTH')) return 'OAUTH';
+  if (t.includes('JWT')) return 'JWT';
+  if (t.includes('OIDC')) return 'OIDC';
+  return 'OTHER';
+}
+
+/** Serialize an IDP if it's a type we can recreate and has a readable config; else undefined. */
+function toExportedIDP(idp: IdentityProvider): ExportedIDP | undefined {
+  const family = idpFamily(idp.type);
+  if (family === 'OIDC' && idp.oidcConfig) {
+    return {
+      id: idp.id,
+      name: idp.name,
+      type: 'OIDC',
+      options: idp.options,
+      oidc: {
+        issuer: idp.oidcConfig.issuer ?? '',
+        clientId: idp.oidcConfig.clientId ?? '',
+        scopes: idp.oidcConfig.scopes,
+        displayNameMapping: idp.oidcConfig.displayNameMapping,
+        usernameMapping: idp.oidcConfig.usernameMapping,
+        isAutoRegister: idp.oidcConfig.isAutoRegister,
+      },
+    };
+  }
+  if (family === 'OAUTH' && idp.oauthConfig) {
+    return {
+      id: idp.id,
+      name: idp.name,
+      type: 'OAUTH',
+      options: idp.options,
+      oauth: {
+        clientId: idp.oauthConfig.clientId ?? '',
+        authorizationEndpoint: idp.oauthConfig.authorizationEndpoint ?? '',
+        tokenEndpoint: idp.oauthConfig.tokenEndpoint ?? '',
+        userEndpoint: idp.oauthConfig.userEndpoint ?? '',
+        scopes: idp.oauthConfig.scopes,
+        idAttribute: idp.oauthConfig.idAttribute,
+      },
+    };
+  }
+  if (family === 'JWT' && idp.jwtConfig) {
+    return {
+      id: idp.id,
+      name: idp.name,
+      type: 'JWT',
+      options: idp.options,
+      jwt: {
+        jwtEndpoint: idp.jwtConfig.jwtEndpoint ?? '',
+        issuer: idp.jwtConfig.issuer ?? '',
+        keysEndpoint: idp.jwtConfig.keysEndpoint ?? '',
+        headerName: idp.jwtConfig.headerName,
+      },
+    };
+  }
+  return undefined;
 }
 
 async function listAllUsers(orgId: string): Promise<User[]> {
@@ -296,6 +396,20 @@ export async function exportOrganization(
     return fail(gStep, err);
   }
 
+  // Identity providers — best-effort: a token without idp.read loses the IDPs,
+  // not the whole export. Social presets and SAML are skipped (not recreatable).
+  const iStep = add({ id: 'idps', label: 'Exporting identity providers', kind: 'idp' });
+  set(iStep, 'running');
+  let idps: ExportedIDP[] = [];
+  try {
+    const raw = await listIDPs(org.id);
+    idps = raw.map(toExportedIDP).filter((x): x is ExportedIDP => !!x);
+    const skipped = raw.length - idps.length;
+    set(iStep, 'done', skipped > 0 ? `${idps.length} providers (${skipped} skipped)` : `${idps.length} providers`);
+  } catch (err) {
+    set(iStep, 'error', (err as Error).message);
+  }
+
   const sStep = add({ id: 'settings', label: 'Exporting organization settings', kind: 'setting' });
   set(sStep, 'running');
   const settings = await exportSettings(org.id);
@@ -311,6 +425,7 @@ export async function exportOrganization(
     projects: exportedProjects,
     users,
     grants,
+    idps,
     settings,
   };
 }
@@ -421,6 +536,7 @@ export function exportCounts(d: OrgExportFile): {
   apps: number;
   users: number;
   grants: number;
+  idps: number;
   settings: number;
 } {
   return {
@@ -429,6 +545,7 @@ export function exportCounts(d: OrgExportFile): {
     apps: d.projects.reduce((n, p) => n + p.apps.length, 0),
     users: d.users.length,
     grants: d.grants.length,
+    idps: d.idps.length,
     settings: customSettings(d.settings).length,
   };
 }
@@ -465,8 +582,10 @@ export function parseOrgExport(text: string): OrgExportFile {
   if (!d.org?.name || !Array.isArray(d.projects) || !Array.isArray(d.users)) {
     throw new Error('Export file is incomplete (org, projects or users section missing).');
   }
-  // v1 files predate grants/settings — normalize so the importer can rely on them.
+  // v1 files predate grants/settings and v1–v2 predate idps — normalize so the
+  // importer can rely on these arrays always being present.
   if (!Array.isArray(d.grants)) d.grants = [];
+  if (!Array.isArray(d.idps)) d.idps = [];
   return d as OrgExportFile;
 }
 
@@ -478,7 +597,7 @@ export type TransferStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped
 export interface TransferStep {
   id: string;
   label: string;
-  kind: 'org' | 'project' | 'role' | 'app' | 'user' | 'grant' | 'setting';
+  kind: 'org' | 'project' | 'role' | 'app' | 'user' | 'grant' | 'idp' | 'setting';
   status: TransferStatus;
   detail?: string;
 }
@@ -508,6 +627,7 @@ export interface ImportOptions {
   includeApps: boolean;
   includeUsers: boolean;
   includeGrants: boolean;
+  includeIdps: boolean;
   includeSettings: boolean;
 }
 
@@ -646,7 +766,67 @@ export async function importOrganization(
     }
   }
 
-  // 3. Projects with their roles and applications.
+  // 3. Identity providers — org-level, independent of everything else. Secrets
+  // can't be read from the source, so each provider is recreated with an empty
+  // client secret that has to be re-entered on the target before it will work.
+  if (opts.includeIdps && data.idps.length > 0) {
+    for (const idp of data.idps) {
+      const iStep = add({
+        id: `idp:${idp.id}`,
+        label: `Identity provider “${idp.name}” (${idp.type})`,
+        kind: 'idp',
+      });
+      set(iStep, 'running');
+      try {
+        if (idp.type === 'OIDC') {
+          await createOIDCIDP(
+            {
+              name: idp.name,
+              issuer: idp.oidc?.issuer ?? '',
+              clientId: idp.oidc?.clientId ?? '',
+              clientSecret: '',
+              scopes: idp.oidc?.scopes,
+              displayNameMapping: idp.oidc?.displayNameMapping,
+              usernameMapping: idp.oidc?.usernameMapping,
+              isAutoRegister: idp.oidc?.isAutoRegister,
+            },
+            newOrgId,
+          );
+        } else if (idp.type === 'OAUTH') {
+          await createOAuthIDP(
+            {
+              name: idp.name,
+              clientId: idp.oauth?.clientId ?? '',
+              clientSecret: '',
+              authorizationEndpoint: idp.oauth?.authorizationEndpoint ?? '',
+              tokenEndpoint: idp.oauth?.tokenEndpoint ?? '',
+              userEndpoint: idp.oauth?.userEndpoint ?? '',
+              scopes: idp.oauth?.scopes,
+              idAttribute: idp.oauth?.idAttribute,
+            },
+            newOrgId,
+          );
+        } else {
+          await createJWTIDP(
+            {
+              name: idp.name,
+              jwtEndpoint: idp.jwt?.jwtEndpoint ?? '',
+              issuer: idp.jwt?.issuer ?? '',
+              keysEndpoint: idp.jwt?.keysEndpoint ?? '',
+              headerName: idp.jwt?.headerName,
+            },
+            newOrgId,
+          );
+        }
+        // JWT providers have no client secret; only OIDC/OAuth need one re-entered.
+        set(iStep, 'done', idp.type === 'JWT' ? undefined : 're-enter client secret to activate');
+      } catch (err) {
+        set(iStep, 'error', (err as Error).message);
+      }
+    }
+  }
+
+  // 4. Projects with their roles and applications.
   for (const project of data.projects) {
     const pStep = add({ id: `p:${project.id}`, label: `Project “${project.name}”`, kind: 'project' });
     set(pStep, 'running');
@@ -739,7 +919,7 @@ export async function importOrganization(
     }
   }
 
-  // 4. Users (org-level, independent of projects).
+  // 5. Users (org-level, independent of projects).
   if (opts.includeUsers) {
     for (const u of data.users) {
       const label =
@@ -784,7 +964,7 @@ export async function importOrganization(
     }
   }
 
-  // 5. User grants — needs both maps, so this runs last. Grants pointing at
+  // 6. User grants — needs both maps, so this runs last. Grants pointing at
   // users or projects that were not (successfully) imported are skipped, not
   // failed: the export may legitimately contain grants on other orgs' projects.
   if (opts.includeGrants && data.grants.length > 0) {
