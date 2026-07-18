@@ -12,6 +12,7 @@ import {
   Download,
   Upload,
   FileJson2,
+  KeyRound,
   Loader2,
   Play,
 } from 'lucide-react';
@@ -20,7 +21,8 @@ import {
   downloadProjectExport,
   exportProject,
   importProject,
-  parseProjectExport,
+  parseProjectExports,
+  type ImportedProjectApp,
   type ProjectExportFile,
 } from '../api/projectTransfer';
 import type { TransferStep } from '../api/transfer';
@@ -39,8 +41,10 @@ import {
   HintWrap,
   Input,
   PageHeader,
+  Select,
   Spinner,
 } from '../components/ui';
+import { CopyRow } from '../components/CopyRow';
 
 function useDebounce<T>(value: T, delay = 300): T {
   const [debounced, setDebounced] = useState(value);
@@ -71,17 +75,21 @@ export default function Projects() {
   const [editTarget, setEditTarget] = useState<Project | null>(null);
   const [editForm, setEditForm] = useState(blankForm);
 
-  // Single-project export / import (project + its roles, into the active org).
+  // Single-project export / import (project, roles & apps, into the active org).
   const [exportingId, setExportingId] = useState<string | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // An org export file offers several projects; a project export exactly one.
+  const [importCandidates, setImportCandidates] = useState<ProjectExportFile[]>([]);
   const [importData, setImportData] = useState<ProjectExportFile | null>(null);
   const [importFileName, setImportFileName] = useState('');
   const [importName, setImportName] = useState('');
   const [importRoles, setImportRoles] = useState(true);
+  const [importApps, setImportApps] = useState(true);
   const [importSteps, setImportSteps] = useState<TransferStep[]>([]);
   const [importRunning, setImportRunning] = useState(false);
   const [importDone, setImportDone] = useState(false);
+  const [importCreds, setImportCreds] = useState<ImportedProjectApp[]>([]);
 
   const projectsQ = useQuery({
     queryKey: ['projects', activeOrgId, debouncedSearch],
@@ -177,7 +185,10 @@ export default function Projects() {
         activeOrg ? { id: activeOrg.id, name: activeOrg.name } : undefined,
       );
       const file = downloadProjectExport(data);
-      toast.success('Project exported', `${file} — ${data.roles.length} roles`);
+      toast.success(
+        'Project exported',
+        `${file} — ${data.roles.length} roles, ${data.apps.length} apps`,
+      );
     } catch (err) {
       toast.error('Export failed', (err as Error).message);
     } finally {
@@ -188,22 +199,31 @@ export default function Projects() {
   function closeImport() {
     if (importRunning) return;
     setImportOpen(false);
+    setImportCandidates([]);
     setImportData(null);
     setImportFileName('');
     setImportName('');
     setImportRoles(true);
+    setImportApps(true);
     setImportSteps([]);
     setImportDone(false);
+    setImportCreds([]);
+  }
+
+  function selectCandidate(c: ProjectExportFile) {
+    setImportData(c);
+    setImportName(c.project.name);
+    setImportSteps([]);
+    setImportDone(false);
+    setImportCreds([]);
   }
 
   async function onImportFile(f: File) {
     try {
-      const parsed = parseProjectExport(await f.text());
-      setImportData(parsed);
+      const candidates = parseProjectExports(await f.text());
+      setImportCandidates(candidates);
       setImportFileName(f.name);
-      setImportName(parsed.project.name);
-      setImportSteps([]);
-      setImportDone(false);
+      selectCandidate(candidates[0]);
     } catch (err) {
       toast.error('Could not read export file', (err as Error).message);
     }
@@ -214,13 +234,20 @@ export default function Projects() {
     setImportRunning(true);
     setImportSteps([]);
     setImportDone(false);
+    setImportCreds([]);
     try {
       const res = await importProject(
         importData,
-        { orgId: activeOrgId, projectName: importName.trim(), includeRoles: importRoles },
+        {
+          orgId: activeOrgId,
+          projectName: importName.trim(),
+          includeRoles: importRoles,
+          includeApps: importApps,
+        },
         setImportSteps,
       );
       setImportDone(true);
+      setImportCreds(res.apps.filter((a) => a.clientId || a.clientSecret));
       patchProjectsCache((list) =>
         list.some((p) => p.id === res.projectId)
           ? list
@@ -333,13 +360,13 @@ export default function Projects() {
                 </div>
                 <p className="truncate font-mono text-[11px] text-[var(--color-ink-dim)]">{p.id}</p>
               </div>
-              <HintWrap hint="POST project.v2/ListProjectRoles">
+              <HintWrap hint={['POST project.v2/ListProjectRoles', 'POST app.v2/ListApplications']}>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onExport(p);
                   }}
-                  title="Export project & roles (JSON)"
+                  title="Export project, roles & apps (JSON)"
                   className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
                 >
                   {exportingId === p.id ? (
@@ -484,7 +511,7 @@ export default function Projects() {
               icon={importRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
               disabled={!importData || !importName.trim() || importRunning || importDone}
               onClick={startImport}
-              hint={['POST project.v2/CreateProject', 'POST project.v2/AddProjectRole']}
+              hint={['POST project.v2/CreateProject', 'POST project.v2/AddProjectRole', 'POST app.v2/CreateApplication']}
             >
               {importRunning ? 'Importing…' : 'Start import'}
             </Button>
@@ -515,17 +542,34 @@ export default function Projects() {
                   <span className="truncate">{importFileName}</span>
                 </span>
                 <span className="mt-1 block text-[11px] text-[var(--color-ink-dim)]">
-                  Project “{importData.project.name}” — {importData.roles.length} roles
+                  Project “{importData.project.name}” — {importData.roles.length} roles,{' '}
+                  {importData.apps.length} apps
                   {importData.sourceInstance ? ` · from ${importData.sourceInstance}` : ''}
                 </span>
               </span>
             ) : (
               <span className="flex items-center gap-2 text-sm text-[var(--color-ink-dim)]">
                 <FileJson2 className="size-4" />
-                Choose a project export file (.json)…
+                Choose a project or org export file (.json)…
               </span>
             )}
           </button>
+
+          {importCandidates.length > 1 && (
+            <Field label="Project to import">
+              <Select
+                value={importData ? importCandidates.indexOf(importData) : 0}
+                disabled={importRunning}
+                onChange={(e) => selectCandidate(importCandidates[Number(e.target.value)])}
+              >
+                {importCandidates.map((c, i) => (
+                  <option key={c.project.id} value={i}>
+                    {c.project.name} — {c.roles.length} roles, {c.apps.length} apps
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           <Field label="Project name" required>
             <Input
@@ -541,6 +585,11 @@ export default function Projects() {
             checked={importRoles}
             onChange={setImportRoles}
           />
+          <Checkbox
+            label={`Import applications${importData ? ` (${importData.apps.length})` : ''}`}
+            checked={importApps}
+            onChange={setImportApps}
+          />
 
           {importSteps.length > 0 && (
             <div className="max-h-[220px] space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-white/4 p-2 pr-1">
@@ -550,10 +599,35 @@ export default function Projects() {
             </div>
           )}
 
+          {importDone && importCreds.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-amber-300/20 bg-amber-400/5 p-3">
+              <p className="flex items-center gap-2 text-sm font-medium text-white">
+                <KeyRound className="size-4 text-amber-300" />
+                New client credentials
+              </p>
+              <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
+                The target instance issued fresh credentials — secrets are shown only here, only
+                once. Copy them before closing.
+              </p>
+              {importCreds.map((a) => (
+                <div key={a.appId} className="space-y-2">
+                  <p className="text-xs font-medium text-white">
+                    {a.name} <Badge tone="accent">{a.type}</Badge>
+                  </p>
+                  {a.clientId && <CopyRow label="Client ID" value={a.clientId} />}
+                  {a.clientSecret && <CopyRow label="Client Secret" value={a.clientSecret} secret />}
+                </div>
+              ))}
+            </div>
+          )}
+
           <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
-            The project is recreated with a new ID in the currently active organization. The export
-            file contains the project's settings and role catalogue — applications and user grants
-            are not part of a project export (use the org transfer for those).
+            The project is recreated with a new ID in the currently active organization, including
+            its role catalogue and its OIDC / API applications (SAML apps are certificate-bound and
+            must be recreated manually). Applications get new client credentials — API and web app
+            secrets are shown once after the import. You can also pick a project out of a full org
+            export file. User grants are not part of a project export (use the org transfer for
+            those).
           </p>
         </div>
       </Modal>

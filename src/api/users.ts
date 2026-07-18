@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, ApiError } from './client';
 import { EP } from './endpoints';
 import type { ListDetails, User } from './types';
 
@@ -177,6 +177,45 @@ export async function updateMachineUser(
     name: input.name,
     description: input.description || undefined,
   });
+}
+
+export interface MachineSecret {
+  clientId?: string;
+  clientSecret?: string;
+}
+
+/**
+ * Generates client-credentials for a machine user. Replaces any existing
+ * secret — the old one stops working immediately. Uses user.v2 AddSecret
+ * (PUT /v2/users/{id}/secret); if the instance doesn't serve that route yet it
+ * falls back to management v1 GenerateMachineSecret. The v2 response carries
+ * only the secret (the client id is the user's login name); v1 returns both.
+ */
+export async function generateMachineSecret(userId: string): Promise<MachineSecret> {
+  try {
+    const res = await api.put<Record<string, unknown>>(EP.userSecret(userId), {});
+    return {
+      clientId: res.clientId as string | undefined,
+      clientSecret: res.clientSecret as string | undefined,
+    };
+  } catch (err) {
+    if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 405)) throw err;
+    const res = await api.put<Record<string, unknown>>(EP.userSecretV1(userId), {});
+    return {
+      clientId: res.clientId as string | undefined,
+      clientSecret: res.clientSecret as string | undefined,
+    };
+  }
+}
+
+/** Revokes a machine user's client secret (v2 RemoveSecret, v1 fallback). */
+export async function removeMachineSecret(userId: string): Promise<void> {
+  try {
+    await api.delete(EP.userSecret(userId));
+  } catch (err) {
+    if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 405)) throw err;
+    await api.delete(EP.userSecretV1(userId));
+  }
 }
 
 export async function deleteUser(userId: string): Promise<void> {

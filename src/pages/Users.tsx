@@ -13,9 +13,18 @@ import {
   Pencil,
   Bot,
   FileDown,
+  KeyRound,
+  Loader2,
   ShieldCheck,
 } from 'lucide-react';
-import { deactivateUser, deleteUser, listUsers, reactivateUser, makeUserOrgAdmin } from '../api/users';
+import {
+  deactivateUser,
+  deleteUser,
+  generateMachineSecret,
+  listUsers,
+  reactivateUser,
+  makeUserOrgAdmin,
+} from '../api/users';
 import { listProjects, listRoles } from '../api/projects';
 import {
   listUserGrants,
@@ -31,6 +40,7 @@ import { useConfirm } from '../components/Confirm';
 import { UserFormOverlay } from '../components/UserFormOverlay';
 import { MachineUserFormOverlay } from '../components/MachineUserFormOverlay';
 import { Modal } from '../components/Modal';
+import { CopyRow } from '../components/CopyRow';
 import {
   Badge,
   Button,
@@ -51,6 +61,13 @@ export default function Users() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'human' | 'machine'>('human');
+  // Machine-user client credentials: generation in flight + one-time result modal.
+  const [secretBusyId, setSecretBusyId] = useState<string | null>(null);
+  const [secretResult, setSecretResult] = useState<{
+    name: string;
+    clientId: string;
+    clientSecret?: string;
+  } | null>(null);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
@@ -137,6 +154,34 @@ export default function Users() {
       danger: true,
     });
     if (ok) deleteM.mutate(id);
+  }
+
+  async function onGenerateSecret(u: User, label: string) {
+    const ok = await confirm({
+      title: 'Generate client secret',
+      message: (
+        <>
+          Generate client credentials for <strong className="text-white">{label}</strong>? Any
+          existing client secret stops working immediately.
+        </>
+      ),
+      confirmLabel: 'Generate',
+    });
+    if (!ok) return;
+    setSecretBusyId(u.userId);
+    try {
+      const res = await generateMachineSecret(u.userId);
+      setSecretResult({
+        name: label,
+        // v2 AddSecret returns only the secret — the client id is the login name.
+        clientId: res.clientId ?? u.preferredLoginName ?? u.username ?? u.userId,
+        clientSecret: res.clientSecret,
+      });
+    } catch (err) {
+      toast.error('Could not generate client secret', (err as Error).message);
+    } finally {
+      setSecretBusyId(null);
+    }
   }
 
   const users = usersQ.data?.users ?? [];
@@ -344,6 +389,22 @@ export default function Users() {
                       </p>
                     )}
                   </div>
+                  {isMachine && (
+                    <HintWrap hint={['PUT /v2/users/{id}/secret', 'PUT /management/v1/users/{id}/secret (fallback)']}>
+                      <button
+                        onClick={() => onGenerateSecret(u, name)}
+                        title="Generate client ID & secret"
+                        disabled={secretBusyId === u.userId}
+                        className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-amber-500/10 hover:text-amber-300 group-hover:opacity-100"
+                      >
+                        {secretBusyId === u.userId ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <KeyRound className="size-4" />
+                        )}
+                      </button>
+                    </HintWrap>
+                  )}
                   <button
                     onClick={() => isMachine ? setMachineEditTarget(u) : setEditTarget(u)}
                     title="Edit"
@@ -489,6 +550,30 @@ export default function Users() {
           invalidate();
         }}
       />
+
+      <Modal
+        open={!!secretResult}
+        onClose={() => setSecretResult(null)}
+        title="Client credentials"
+        description={
+          secretResult ? `${secretResult.name} — copy these now; the secret is shown only once.` : undefined
+        }
+        footer={<Button onClick={() => setSecretResult(null)}>Done</Button>}
+      >
+        {secretResult && (
+          <div className="space-y-3">
+            <CopyRow label="Client ID" value={secretResult.clientId} />
+            {secretResult.clientSecret && (
+              <CopyRow label="Client Secret" value={secretResult.clientSecret} secret />
+            )}
+            <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
+              Authenticate with the OAuth <code>client_credentials</code> grant against{' '}
+              <code>/oauth/v2/token</code> (add scope{' '}
+              <code>urn:zitadel:iam:org:project:id:zitadel:aud</code> to call ZITADEL APIs).
+            </p>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

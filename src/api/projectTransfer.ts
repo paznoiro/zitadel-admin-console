@@ -1,18 +1,30 @@
 import { getSession } from './session';
+import { createAPIApp, createOIDCApp, listApps } from './apps';
 import { createProject, createRole, listRoles } from './projects';
-import { stepTracker, type Emit, type ExportedRole, type TransferStep } from './transfer';
+import {
+  EXPORT_FORMAT as ORG_EXPORT_FORMAT,
+  EXPORT_VERSION as ORG_EXPORT_VERSION,
+  stepTracker,
+  toExportedApp,
+  type Emit,
+  type ExportedApp,
+  type ExportedRole,
+  type OrgExportFile,
+  type TransferStep,
+} from './transfer';
 import type { Project } from './types';
 
 /**
  * Single-project export / import. Unlike the org transfer (which creates a new
- * organization), this recreates one project and its roles inside an EXISTING
- * organization — the one the console is currently working in. Use it to copy a
- * project's role catalogue between orgs or instances without moving anything
+ * organization), this recreates one project — its roles and applications —
+ * inside an EXISTING organization: the one the console is currently working in.
+ * Use it to copy a project between orgs or instances without moving anything
  * else.
  */
 
 export const PROJECT_EXPORT_FORMAT = 'zitadel-project-export' as const;
-export const PROJECT_EXPORT_VERSION = 1;
+// v1: project + roles. v2 adds the project's applications (OIDC + API config).
+export const PROJECT_EXPORT_VERSION = 2;
 
 export interface ProjectExportFile {
   format: typeof PROJECT_EXPORT_FORMAT;
@@ -29,6 +41,7 @@ export interface ProjectExportFile {
     privateLabelingSetting?: string;
   };
   roles: ExportedRole[];
+  apps: ExportedApp[];
 }
 
 // ---- Export -----------------------------------------------------------------
@@ -54,6 +67,21 @@ export async function exportProject(
     throw err;
   }
 
+  const aStep = add({
+    id: `apps:${project.id}`,
+    label: `Reading applications of “${project.name}”`,
+    kind: 'app',
+  });
+  set(aStep, 'running');
+  let apps: Awaited<ReturnType<typeof listApps>>;
+  try {
+    apps = await listApps(project.id, org?.id);
+    set(aStep, 'done', `${apps.length} apps`);
+  } catch (err) {
+    set(aStep, 'error', (err as Error).message);
+    throw err;
+  }
+
   return {
     format: PROJECT_EXPORT_FORMAT,
     version: PROJECT_EXPORT_VERSION,
@@ -69,6 +97,7 @@ export async function exportProject(
       privateLabelingSetting: project.privateLabelingSetting,
     },
     roles: roles.map((r) => ({ key: r.key, displayName: r.displayName, group: r.group })),
+    apps: apps.map(toExportedApp),
   };
 }
 
@@ -88,26 +117,66 @@ export function downloadProjectExport(data: ProjectExportFile): string {
   return filename;
 }
 
-export function parseProjectExport(text: string): ProjectExportFile {
+/**
+ * Reads an export file into one or more importable projects. Accepts both this
+ * console's file formats: a project export yields exactly one candidate, an
+ * ORG export yields one candidate per project it contains (the UI lets the
+ * user pick which one to import).
+ */
+export function parseProjectExports(text: string): ProjectExportFile[] {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
     throw new Error('The file is not valid JSON.');
   }
-  const d = raw as Partial<ProjectExportFile>;
-  if (!d || d.format !== PROJECT_EXPORT_FORMAT) {
-    throw new Error('Not a ZITADEL project export file (missing format marker).');
+  const d = raw as { format?: string };
+
+  if (d?.format === PROJECT_EXPORT_FORMAT) {
+    const f = d as Partial<ProjectExportFile>;
+    if (typeof f.version !== 'number' || f.version < 1 || f.version > PROJECT_EXPORT_VERSION) {
+      throw new Error(
+        `Unsupported export version ${f.version} — this build reads v1–v${PROJECT_EXPORT_VERSION}.`,
+      );
+    }
+    if (!f.project?.name || !Array.isArray(f.roles)) {
+      throw new Error('Export file is incomplete (project or roles section missing).');
+    }
+    // v1 files predate apps — normalize so the importer can rely on the array.
+    if (!Array.isArray(f.apps)) f.apps = [];
+    return [f as ProjectExportFile];
   }
-  if (typeof d.version !== 'number' || d.version < 1 || d.version > PROJECT_EXPORT_VERSION) {
-    throw new Error(
-      `Unsupported export version ${d.version} — this build reads v1–v${PROJECT_EXPORT_VERSION}.`,
-    );
+
+  if (d?.format === ORG_EXPORT_FORMAT) {
+    const o = d as Partial<OrgExportFile>;
+    if (typeof o.version !== 'number' || o.version < 1 || o.version > ORG_EXPORT_VERSION) {
+      throw new Error(
+        `Unsupported org export version ${o.version} — this build reads v1–v${ORG_EXPORT_VERSION}.`,
+      );
+    }
+    if (!Array.isArray(o.projects) || o.projects.length === 0) {
+      throw new Error('This org export contains no projects.');
+    }
+    return o.projects.map((p) => ({
+      format: PROJECT_EXPORT_FORMAT,
+      version: PROJECT_EXPORT_VERSION,
+      exportedAt: o.exportedAt ?? '',
+      sourceInstance: o.sourceInstance,
+      sourceOrg: o.org,
+      project: {
+        id: p.id,
+        name: p.name,
+        projectRoleAssertion: p.projectRoleAssertion,
+        projectRoleCheck: p.projectRoleCheck,
+        hasProjectCheck: p.hasProjectCheck,
+        privateLabelingSetting: p.privateLabelingSetting,
+      },
+      roles: p.roles ?? [],
+      apps: p.apps ?? [],
+    }));
   }
-  if (!d.project?.name || !Array.isArray(d.roles)) {
-    throw new Error('Export file is incomplete (project or roles section missing).');
-  }
-  return d as ProjectExportFile;
+
+  throw new Error('Not a ZITADEL project or org export file (missing format marker).');
 }
 
 // ---- Import -----------------------------------------------------------------
@@ -118,19 +187,35 @@ export interface ProjectImportOptions {
   /** Name for the recreated project (defaults to the exported name in the UI). */
   projectName: string;
   includeRoles: boolean;
+  includeApps: boolean;
+}
+
+/**
+ * Credentials of a recreated application. The target instance mints fresh
+ * ones — secrets cannot be read from the source — so `clientSecret` here is
+ * the ONLY time it is visible; it must be copied before the dialog closes.
+ * BASIC-auth API apps and BASIC/POST OIDC apps get a secret; NONE/JWT don't.
+ */
+export interface ImportedProjectApp {
+  appId: string;
+  name: string;
+  type: 'OIDC' | 'API';
+  clientId?: string;
+  clientSecret?: string;
 }
 
 export interface ProjectImportResult {
   projectId: string;
   projectName: string;
+  apps: ImportedProjectApp[];
   steps: TransferStep[];
 }
 
 /**
  * Recreates the exported project inside an existing org on the currently
- * connected instance. Role failures are recorded on their step and the import
- * continues (same best-effort contract as the org import); only the project
- * creation itself is fatal.
+ * connected instance. Role/app failures are recorded on their step and the
+ * import continues (same best-effort contract as the org import); only the
+ * project creation itself is fatal.
  */
 export async function importProject(
   data: ProjectExportFile,
@@ -138,6 +223,7 @@ export async function importProject(
   onProgress: Emit,
 ): Promise<ProjectImportResult> {
   const { steps, add, set } = stepTracker(onProgress);
+  const apps: ImportedProjectApp[] = [];
 
   const pStep = add({
     id: `p:${data.project.id}`,
@@ -181,5 +267,60 @@ export async function importProject(
     }
   }
 
-  return { projectId: newProjectId, projectName: opts.projectName, steps };
+  if (opts.includeApps) {
+    for (const app of data.apps) {
+      const aStep = add({
+        id: `a:${app.id}`,
+        label: `App “${app.name}” (${app.type})`,
+        kind: 'app',
+      });
+      if (app.type === 'SAML') {
+        set(aStep, 'skipped', 'SAML metadata is certificate-bound; recreate manually');
+        continue;
+      }
+      set(aStep, 'running');
+      try {
+        const res =
+          app.type === 'OIDC'
+            ? await createOIDCApp(
+                newProjectId,
+                {
+                  name: app.name,
+                  redirectUris: app.oidc?.redirectUris ?? [],
+                  postLogoutRedirectUris: app.oidc?.postLogoutRedirectUris ?? [],
+                  appType: app.oidc?.appType,
+                  authMethodType: app.oidc?.authMethodType,
+                  grantTypes: app.oidc?.grantTypes,
+                  responseTypes: app.oidc?.responseTypes,
+                  devMode: app.oidc?.devMode,
+                  accessTokenType: app.oidc?.accessTokenType,
+                },
+                opts.orgId,
+              )
+            : await createAPIApp(
+                newProjectId,
+                { name: app.name, authMethodType: app.api?.authMethodType },
+                opts.orgId,
+              );
+        apps.push({
+          appId: res.appId,
+          name: app.name,
+          type: app.type,
+          clientId: res.clientId,
+          clientSecret: res.clientSecret,
+        });
+        set(
+          aStep,
+          'done',
+          res.clientSecret
+            ? `id ${res.appId} — new client secret issued (shown below)`
+            : `id ${res.appId}`,
+        );
+      } catch (err) {
+        set(aStep, 'error', (err as Error).message);
+      }
+    }
+  }
+
+  return { projectId: newProjectId, projectName: opts.projectName, apps, steps };
 }

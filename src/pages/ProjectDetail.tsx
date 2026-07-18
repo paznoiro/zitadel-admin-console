@@ -48,6 +48,7 @@ import type { Application } from '../api/types';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Modal } from '../components/Modal';
+import { CopyRow } from '../components/CopyRow';
 import {
   Badge,
   Button,
@@ -290,6 +291,7 @@ function AppsTab({ projectId }: { projectId: string }) {
           <div className="space-y-3">
             <CopyRow label="Client ID" value={credentials.clientId ?? ''} />
             <CopyRow label="Client Secret" value={credentials.clientSecret ?? ''} secret />
+            {activeOrgId && <CopyRow label="Organization ID" value={activeOrgId} />}
           </div>
         )}
       </Modal>
@@ -311,6 +313,7 @@ function AppCard({
   onDelete: () => void;
 }) {
   const toast = useToast();
+  const { activeOrgId } = useAuth();
   const o = app.oidc;
   const redirects = o?.redirectUris ?? app.redirectUris ?? [];
   const authMethod =
@@ -366,9 +369,28 @@ function AppCard({
             toast.success('Client ID copied');
           }}
           title="Copy client ID"
-          className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[var(--color-ink-dim)] transition hover:text-white"
+          className="mt-1 flex w-full items-center gap-1.5 font-mono text-[11px] text-[var(--color-ink-dim)] transition hover:text-white"
         >
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]/70">
+            client
+          </span>
           <span className="truncate">{app.clientId}</span>
+          <Copy className="size-3 shrink-0 opacity-0 transition group-hover:opacity-100" />
+        </button>
+      )}
+      {activeOrgId && (
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(activeOrgId);
+            toast.success('Organization ID copied');
+          }}
+          title="Copy organization ID"
+          className="mt-1 flex w-full items-center gap-1.5 font-mono text-[11px] text-[var(--color-ink-dim)] transition hover:text-white"
+        >
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]/70">
+            org
+          </span>
+          <span className="truncate">{activeOrgId}</span>
           <Copy className="size-3 shrink-0 opacity-0 transition group-hover:opacity-100" />
         </button>
       )}
@@ -1070,33 +1092,6 @@ function CreateAppModal({
         )}
       </div>
     </Modal>
-  );
-}
-
-function CopyRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
-  const toast = useToast();
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <code className="glass-input flex-1 overflow-x-auto whitespace-nowrap px-3 py-2.5 font-mono text-xs">
-          {value}
-        </code>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<Copy className="size-3.5" />}
-          onClick={() => {
-            navigator.clipboard.writeText(value);
-            toast.success(`${label} copied`);
-          }}
-        >
-          Copy
-        </Button>
-      </div>
-      {secret && (
-        <p className="mt-1 text-[11px] text-amber-300/80">⚠ Store this securely; it won't be shown again.</p>
-      )}
-    </Field>
   );
 }
 

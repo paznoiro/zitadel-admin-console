@@ -39,7 +39,7 @@ import type {
   PasswordComplexityPolicy,
   PrivacyPolicy,
 } from './orgSettings';
-import type { User } from './types';
+import type { Application, User } from './types';
 
 /**
  * Org export / import ("transfer"). Export serializes everything an org owns
@@ -221,6 +221,29 @@ function toExportedUser(u: User): ExportedUser {
   };
 }
 
+/** Serializes an app's portable config (secrets can never be read back). */
+export function toExportedApp(a: Application): ExportedApp {
+  return {
+    id: a.id,
+    name: a.name,
+    type: a.type,
+    oidc: a.oidc
+      ? {
+          redirectUris: a.oidc.redirectUris,
+          postLogoutRedirectUris: a.oidc.postLogoutRedirectUris,
+          additionalOrigins: a.oidc.additionalOrigins,
+          responseTypes: a.oidc.responseTypes,
+          grantTypes: a.oidc.grantTypes,
+          appType: a.oidc.appType,
+          authMethodType: a.oidc.authMethodType,
+          devMode: a.oidc.devMode,
+          accessTokenType: a.oidc.accessTokenType,
+        }
+      : undefined,
+    api: a.api ? { authMethodType: a.api.authMethodType } : undefined,
+  };
+}
+
 /** The recreatable IDP family, or 'OTHER' for social presets / SAML we skip. */
 function idpFamily(t: IDPRawType): 'OIDC' | 'OAUTH' | 'JWT' | 'OTHER' {
   if (t.includes('OAUTH')) return 'OAUTH';
@@ -336,25 +359,7 @@ export async function exportOrganization(
       hasProjectCheck: p.hasProjectCheck,
       privateLabelingSetting: p.privateLabelingSetting,
       roles: roles.map((r) => ({ key: r.key, displayName: r.displayName, group: r.group })),
-      apps: apps.map((a) => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        oidc: a.oidc
-          ? {
-              redirectUris: a.oidc.redirectUris,
-              postLogoutRedirectUris: a.oidc.postLogoutRedirectUris,
-              additionalOrigins: a.oidc.additionalOrigins,
-              responseTypes: a.oidc.responseTypes,
-              grantTypes: a.oidc.grantTypes,
-              appType: a.oidc.appType,
-              authMethodType: a.oidc.authMethodType,
-              devMode: a.oidc.devMode,
-              accessTokenType: a.oidc.accessTokenType,
-            }
-          : undefined,
-        api: a.api ? { authMethodType: a.api.authMethodType } : undefined,
-      })),
+      apps: apps.map(toExportedApp),
     });
   }
 

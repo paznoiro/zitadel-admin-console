@@ -140,6 +140,11 @@ export const EP = {
   userDelete: (userId: string) => `/v2/users/${userId}`,
   userDeactivate: (userId: string) => `/v2/users/${userId}/deactivate`,
   userReactivate: (userId: string) => `/v2/users/${userId}/reactivate`,
+  // Machine-user client secret (client-credentials grant).
+  // v2 AddSecret/RemoveSecret: PUT/DELETE — client id is the user's login name.
+  userSecret: (userId: string) => `/v2/users/${userId}/secret`,
+  // management v1 GenerateMachineSecret fallback (returns clientId + clientSecret)
+  userSecretV1: (userId: string) => `/management/v1/users/${userId}/secret`,
 
   // ---- Authorization service (zitadel.authorization.v2 Connect RPC) ----
   authorizationList: () => `/zitadel.authorization.v2.AuthorizationService/ListAuthorizations`,
