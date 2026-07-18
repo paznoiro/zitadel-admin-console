@@ -4,6 +4,7 @@ import { createProject, createRole, listRoles } from './projects';
 import {
   EXPORT_FORMAT as ORG_EXPORT_FORMAT,
   EXPORT_VERSION as ORG_EXPORT_VERSION,
+  dedupeBy,
   stepTracker,
   toExportedApp,
   type Emit,
@@ -144,6 +145,8 @@ export function parseProjectExports(text: string): ProjectExportFile[] {
     }
     // v1 files predate apps — normalize so the importer can rely on the array.
     if (!Array.isArray(f.apps)) f.apps = [];
+    f.roles = dedupeBy(f.roles, (r) => r.key);
+    f.apps = dedupeBy(f.apps, (a) => a.id);
     return [f as ProjectExportFile];
   }
 
@@ -157,7 +160,8 @@ export function parseProjectExports(text: string): ProjectExportFile[] {
     if (!Array.isArray(o.projects) || o.projects.length === 0) {
       throw new Error('This org export contains no projects.');
     }
-    return o.projects.map((p) => ({
+    // Old org exports can list the same project twice (grant-row duplication).
+    return dedupeBy(o.projects, (p) => p.id).map((p) => ({
       format: PROJECT_EXPORT_FORMAT,
       version: PROJECT_EXPORT_VERSION,
       exportedAt: o.exportedAt ?? '',
@@ -171,8 +175,8 @@ export function parseProjectExports(text: string): ProjectExportFile[] {
         hasProjectCheck: p.hasProjectCheck,
         privateLabelingSetting: p.privateLabelingSetting,
       },
-      roles: p.roles ?? [],
-      apps: p.apps ?? [],
+      roles: dedupeBy(p.roles ?? [], (r) => r.key),
+      apps: dedupeBy(p.apps ?? [], (a) => a.id),
     }));
   }
 

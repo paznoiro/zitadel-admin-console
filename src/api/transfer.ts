@@ -221,6 +221,17 @@ function toExportedUser(u: User): ExportedUser {
   };
 }
 
+/** Keeps the first item per key — used to sanitize export files on read. */
+export function dedupeBy<T>(items: T[], key: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const k = key(item);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Serializes an app's portable config (secrets can never be read back). */
 export function toExportedApp(a: Application): ExportedApp {
   return {
@@ -591,6 +602,19 @@ export function parseOrgExport(text: string): OrgExportFile {
   // importer can rely on these arrays always being present.
   if (!Array.isArray(d.grants)) d.grants = [];
   if (!Array.isArray(d.idps)) d.idps = [];
+  // Files exported before the ListProjects grant-row fix can carry the same
+  // project (with its roles/apps) twice — dedupe so imports never replay them.
+  d.projects = dedupeBy(d.projects!, (p) => p.id).map((p) => ({
+    ...p,
+    roles: dedupeBy(p.roles ?? [], (r) => r.key),
+    apps: dedupeBy(p.apps ?? [], (a) => a.id),
+  }));
+  d.users = dedupeBy(d.users!, (u) => u.id);
+  d.idps = dedupeBy(d.idps, (i) => i.id);
+  d.grants = dedupeBy(
+    d.grants,
+    (g) => `${g.userId}:${g.projectId}:${[...g.roleKeys].sort().join(',')}`,
+  );
   return d as OrgExportFile;
 }
 

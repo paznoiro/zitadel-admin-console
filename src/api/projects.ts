@@ -47,7 +47,19 @@ export async function listProjects(query?: string, orgId?: string): Promise<Proj
   const res = await api.post<ProjectListResponse>(EP.projectList(), body, {
     extraHeaders: { 'Connect-Protocol-Version': '1' },
   });
-  return (res.projects ?? []).map(normalizeProject);
+  // ListProjects returns an extra row per project GRANT (same projectId, with
+  // grantedOrganizationId set), so a granted project shows up twice. Keep only
+  // the owned rows, and dedupe by id as a safety net.
+  const seen = new Set<string>();
+  const projects: Project[] = [];
+  for (const raw of res.projects ?? []) {
+    if (raw.grantedOrganizationId) continue;
+    const p = normalizeProject(raw);
+    if (!p.id || seen.has(p.id)) continue;
+    seen.add(p.id);
+    projects.push(p);
+  }
+  return projects;
 }
 
 export interface CreateProjectInput {

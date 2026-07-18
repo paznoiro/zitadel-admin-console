@@ -84,7 +84,17 @@ export async function listApps(projectId: string, orgId?: string): Promise<Appli
     extraHeaders: { 'Connect-Protocol-Version': '1' },
     orgId,
   });
-  return (res.applications ?? []).map(normalizeApp);
+  // Like ListProjects, the v2 list can repeat an app (one row per project
+  // grant), so dedupe by id.
+  const seen = new Set<string>();
+  const apps: Application[] = [];
+  for (const raw of res.applications ?? []) {
+    const a = normalizeApp(raw);
+    if (!a.id || seen.has(a.id)) continue;
+    seen.add(a.id);
+    apps.push(a);
+  }
+  return apps;
 }
 
 export interface CreateOIDCAppInput {
