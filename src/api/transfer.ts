@@ -602,9 +602,9 @@ export interface TransferStep {
   detail?: string;
 }
 
-type Emit = (steps: TransferStep[]) => void;
+export type Emit = (steps: TransferStep[]) => void;
 
-function stepTracker(onProgress?: Emit) {
+export function stepTracker(onProgress?: Emit) {
   const steps: TransferStep[] = [];
   const emit = () => onProgress?.([...steps]);
   const add = (step: Omit<TransferStep, 'status'> & { status?: TransferStatus }): TransferStep => {

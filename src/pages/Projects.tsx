@@ -1,13 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, Plus, Search, Trash2, ChevronRight, ShieldCheck, Pencil } from 'lucide-react';
+import {
+  Boxes,
+  Plus,
+  Search,
+  Trash2,
+  ChevronRight,
+  ShieldCheck,
+  Pencil,
+  Download,
+  Upload,
+  FileJson2,
+  Loader2,
+  Play,
+} from 'lucide-react';
 import { createProject, deleteProject, listProjects, updateProject } from '../api/projects';
+import {
+  downloadProjectExport,
+  exportProject,
+  importProject,
+  parseProjectExport,
+  type ProjectExportFile,
+} from '../api/projectTransfer';
+import type { TransferStep } from '../api/transfer';
 import type { Project } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { useConfirm } from '../components/Confirm';
 import { Modal } from '../components/Modal';
+import { StepRow } from '../components/StepLog';
 import {
   Badge,
   Button,
@@ -48,6 +70,18 @@ export default function Projects() {
   const [form, setForm] = useState(blankForm);
   const [editTarget, setEditTarget] = useState<Project | null>(null);
   const [editForm, setEditForm] = useState(blankForm);
+
+  // Single-project export / import (project + its roles, into the active org).
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importData, setImportData] = useState<ProjectExportFile | null>(null);
+  const [importFileName, setImportFileName] = useState('');
+  const [importName, setImportName] = useState('');
+  const [importRoles, setImportRoles] = useState(true);
+  const [importSteps, setImportSteps] = useState<TransferStep[]>([]);
+  const [importRunning, setImportRunning] = useState(false);
+  const [importDone, setImportDone] = useState(false);
 
   const projectsQ = useQuery({
     queryKey: ['projects', activeOrgId, debouncedSearch],
@@ -135,6 +169,84 @@ export default function Projects() {
     if (ok) deleteM.mutate(id);
   }
 
+  async function onExport(p: Project) {
+    setExportingId(p.id);
+    try {
+      const data = await exportProject(
+        p,
+        activeOrg ? { id: activeOrg.id, name: activeOrg.name } : undefined,
+      );
+      const file = downloadProjectExport(data);
+      toast.success('Project exported', `${file} — ${data.roles.length} roles`);
+    } catch (err) {
+      toast.error('Export failed', (err as Error).message);
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  function closeImport() {
+    if (importRunning) return;
+    setImportOpen(false);
+    setImportData(null);
+    setImportFileName('');
+    setImportName('');
+    setImportRoles(true);
+    setImportSteps([]);
+    setImportDone(false);
+  }
+
+  async function onImportFile(f: File) {
+    try {
+      const parsed = parseProjectExport(await f.text());
+      setImportData(parsed);
+      setImportFileName(f.name);
+      setImportName(parsed.project.name);
+      setImportSteps([]);
+      setImportDone(false);
+    } catch (err) {
+      toast.error('Could not read export file', (err as Error).message);
+    }
+  }
+
+  async function startImport() {
+    if (!importData || !activeOrgId || !importName.trim()) return;
+    setImportRunning(true);
+    setImportSteps([]);
+    setImportDone(false);
+    try {
+      const res = await importProject(
+        importData,
+        { orgId: activeOrgId, projectName: importName.trim(), includeRoles: importRoles },
+        setImportSteps,
+      );
+      setImportDone(true);
+      patchProjectsCache((list) =>
+        list.some((p) => p.id === res.projectId)
+          ? list
+          : [
+              {
+                id: res.projectId,
+                name: res.projectName,
+                projectRoleAssertion: importData.project.projectRoleAssertion,
+                projectRoleCheck: importData.project.projectRoleCheck,
+                hasProjectCheck: importData.project.hasProjectCheck,
+                organizationId: activeOrgId,
+              },
+              ...list,
+            ],
+      );
+      reconcileSoon();
+      const failures = res.steps.filter((s) => s.status === 'error').length;
+      if (failures === 0) toast.success('Project imported', res.projectName);
+      else toast.info('Import finished with issues', `${failures} step(s) failed — see the log.`);
+    } catch (err) {
+      toast.error('Import failed', (err as Error).message);
+    } finally {
+      setImportRunning(false);
+    }
+  }
+
   const projects = projectsQ.data ?? [];
 
   return (
@@ -144,13 +256,23 @@ export default function Projects() {
         subtitle={activeOrg ? `In “${activeOrg.name}”` : 'Select an organization first.'}
         icon={<Boxes className="size-5" />}
         actions={
-          <Button
-            icon={<Plus className="size-4" />}
-            onClick={() => setCreating(true)}
-            disabled={!activeOrgId}
-          >
-            New Project
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              icon={<Upload className="size-4" />}
+              onClick={() => setImportOpen(true)}
+              disabled={!activeOrgId}
+            >
+              Import
+            </Button>
+            <Button
+              icon={<Plus className="size-4" />}
+              onClick={() => setCreating(true)}
+              disabled={!activeOrgId}
+            >
+              New Project
+            </Button>
+          </>
         }
       />
 
@@ -211,6 +333,22 @@ export default function Projects() {
                 </div>
                 <p className="truncate font-mono text-[11px] text-[var(--color-ink-dim)]">{p.id}</p>
               </div>
+              <HintWrap hint="POST project.v2/ListProjectRoles">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExport(p);
+                  }}
+                  title="Export project & roles (JSON)"
+                  className="rounded-lg p-2 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                >
+                  {exportingId === p.id ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                </button>
+              </HintWrap>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -329,6 +467,94 @@ export default function Projects() {
               onChange={(v) => setEditForm((f) => ({ ...f, hasProjectCheck: v }))}
             />
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={importOpen}
+        onClose={closeImport}
+        title="Import project"
+        description={activeOrg ? `Into “${activeOrg.name}”` : undefined}
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeImport} disabled={importRunning}>
+              {importDone ? 'Close' : 'Cancel'}
+            </Button>
+            <Button
+              icon={importRunning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+              disabled={!importData || !importName.trim() || importRunning || importDone}
+              onClick={startImport}
+              hint={['POST project.v2/CreateProject', 'POST project.v2/AddProjectRole']}
+            >
+              {importRunning ? 'Importing…' : 'Start import'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportFile(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => importFileRef.current?.click()}
+            disabled={importRunning}
+            className="w-full rounded-xl border border-dashed border-white/20 bg-white/4 p-4 text-left transition hover:border-white/40 hover:bg-white/8 disabled:opacity-60"
+          >
+            {importData ? (
+              <span className="block">
+                <span className="flex items-center gap-2 text-sm font-medium text-white">
+                  <FileJson2 className="size-4 text-[var(--color-good)]" />
+                  <span className="truncate">{importFileName}</span>
+                </span>
+                <span className="mt-1 block text-[11px] text-[var(--color-ink-dim)]">
+                  Project “{importData.project.name}” — {importData.roles.length} roles
+                  {importData.sourceInstance ? ` · from ${importData.sourceInstance}` : ''}
+                </span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-sm text-[var(--color-ink-dim)]">
+                <FileJson2 className="size-4" />
+                Choose a project export file (.json)…
+              </span>
+            )}
+          </button>
+
+          <Field label="Project name" required>
+            <Input
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              placeholder="My Project"
+              disabled={importRunning || !importData}
+            />
+          </Field>
+
+          <Checkbox
+            label={`Import project roles${importData ? ` (${importData.roles.length})` : ''}`}
+            checked={importRoles}
+            onChange={setImportRoles}
+          />
+
+          {importSteps.length > 0 && (
+            <div className="max-h-[220px] space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-white/4 p-2 pr-1">
+              {importSteps.map((s) => (
+                <StepRow key={s.id} step={s} />
+              ))}
+            </div>
+          )}
+
+          <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
+            The project is recreated with a new ID in the currently active organization. The export
+            file contains the project's settings and role catalogue — applications and user grants
+            are not part of a project export (use the org transfer for those).
+          </p>
         </div>
       </Modal>
     </>
