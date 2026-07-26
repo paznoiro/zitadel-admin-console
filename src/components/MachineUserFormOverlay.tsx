@@ -106,9 +106,14 @@ export function MachineUserFormOverlay({
   const saveM = useMutation({
     mutationFn: async () => {
       if (isEdit) {
-        // Update user profile info
-        await updateMachineUser(user.userId, { name: name.trim(), description: description.trim() });
-        
+        const profileChanged =
+          name.trim() !== (user.machine?.name ?? '') ||
+          description.trim() !== (user.machine?.description ?? '');
+
+        if (profileChanged) {
+          await updateMachineUser(user.userId, { name: name.trim(), description: description.trim() });
+        }
+
         // Save grants differences
         const original = existingGrantsQ.data ?? [];
         const origMap = new Map(original.map((g) => [g.id, g]));

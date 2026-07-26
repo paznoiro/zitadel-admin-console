@@ -63,7 +63,11 @@ export function UserFormOverlay({
     password: '',
     phone: user?.human?.phone?.phone ?? '',
     emailVerified: true,
-    changeRequired: true,
+    // Sensible defaults: force a change on a NEW user's initial password, but
+    // not when an admin resets an existing user's password. (ZITADEL doesn't
+    // expose the current flag, so this is a default, not the stored state —
+    // it's only sent when a password is actually entered.)
+    changeRequired: !user,
   });
 
   // ── Grants ─────────────────────────────────────────────────────────────────
@@ -338,10 +342,14 @@ export function UserFormOverlay({
                 }} />
             </Field>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--color-ink)', cursor: 'pointer', userSelect: 'none' }}>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--color-ink)', cursor: 'pointer', userSelect: 'none', opacity: isEdit && !form.password.trim() ? 0.5 : 1 }}
+              title={isEdit && !form.password.trim() ? 'Only applies when setting a new password' : undefined}
+            >
               <input
                 type="checkbox"
                 checked={form.changeRequired}
+                disabled={isEdit && !form.password.trim()}
                 onChange={(e) => setForm((f) => ({ ...f, changeRequired: e.target.checked }))}
                 style={{ width: 15, height: 15, accentColor: 'var(--color-accent)' }}
               />
