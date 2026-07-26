@@ -173,9 +173,11 @@ export async function updateMachineUser(
   userId: string,
   input: { name: string; description?: string },
 ): Promise<void> {
-  await api.put(EP.userUpdateMachine(userId), {
-    name: input.name,
-    description: input.description || undefined,
+  await api.patch(EP.userUpdateMachine(userId), {
+    machine: {
+      name: input.name,
+      description: input.description || undefined,
+    },
   });
 }
 

@@ -234,6 +234,8 @@ export const api = {
     request<T>('POST', path, { ...opts, body }),
   put: <T = unknown>(path: string, body?: unknown, opts?: RequestOptions) =>
     request<T>('PUT', path, { ...opts, body }),
+  patch: <T = unknown>(path: string, body?: unknown, opts?: RequestOptions) =>
+    request<T>('PATCH', path, { ...opts, body }),
   delete: <T = unknown>(path: string, opts?: RequestOptions) => request<T>('DELETE', path, opts),
   upload: (path: string, file: File, opts?: Omit<RequestOptions, 'body'>) =>
     uploadFile(path, file, opts),
