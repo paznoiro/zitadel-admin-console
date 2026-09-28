@@ -34,3 +34,4 @@ There is no linter, formatter, or test suite configured.
 - PATs are stored in `localStorage` in plain text. Only use this console against trusted instances.
 - `npm run build` runs TypeScript before Vite; type errors will fail the build.
 - No test runner — verify changes with `npm run typecheck` and manual browser testing.
+- **Always run `npm run build` and confirm it succeeds before committing or pushing. Never push broken builds.**

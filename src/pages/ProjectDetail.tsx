@@ -27,6 +27,7 @@ import { getSession } from '../api/session';
 import { useAuth } from '../context/AuthContext';
 import { deleteRole, listRoles, createRole, updateRole } from '../api/projects';
 import {
+  exportRoles,
   generateRolesTemplate,
   parseRoleLines,
   parseRolesXlsx,
@@ -42,6 +43,7 @@ import {
   updateAppName,
   updateOIDCApp,
   updateAPIApp,
+  regenerateAPIClientSecret,
 } from '../api/apps';
 import type { CreateOIDCAppResult, CreateAPIAppResult } from '../api/apps';
 import type { Application } from '../api/types';
@@ -205,6 +207,31 @@ function AppsTab({ projectId }: { projectId: string }) {
     if (ok) deleteM.mutate(appId);
   }
 
+  const regenerateM = useMutation({
+    mutationFn: (appId: string) => regenerateAPIClientSecret(projectId, appId),
+    onSuccess: (res, appId) => {
+      const name = (appsQ.data ?? []).find((a) => a.id === appId)?.name ?? '';
+      setCredentials({ ...res, name });
+      qc.invalidateQueries({ queryKey: ['apps', projectId] });
+    },
+    onError: (e: Error) => toast.error('Could not regenerate client secret', e.message),
+  });
+
+  async function onRegenerateSecret(app: Application) {
+    const ok = await confirm({
+      title: 'Regenerate client secret',
+      message: (
+        <>
+          Regenerate the client secret of <strong className="text-white">{app.name}</strong>? The
+          current secret stops working immediately.
+        </>
+      ),
+      confirmLabel: 'Regenerate',
+      danger: true,
+    });
+    if (ok) regenerateM.mutate(app.id);
+  }
+
   const apps = appsQ.data ?? [];
 
   return (
@@ -234,15 +261,22 @@ function AppsTab({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {apps.map((a) => (
-            <AppCard
-              key={a.id}
-              app={a}
-              onEdit={() => setEditApp(a)}
-              onEndpoints={a.type === 'OIDC' ? () => setEndpointsApp(a) : undefined}
-              onDelete={() => onDelete(a.id, a.name)}
-            />
-          ))}
+          {apps.map((a) => {
+            const apiHasSecret =
+              a.type === 'API' &&
+              (a.api?.authMethodType ?? 'API_AUTH_METHOD_TYPE_BASIC') ===
+                'API_AUTH_METHOD_TYPE_BASIC';
+            return (
+              <AppCard
+                key={a.id}
+                app={a}
+                onEdit={() => setEditApp(a)}
+                onEndpoints={a.type === 'OIDC' ? () => setEndpointsApp(a) : undefined}
+                onRegenerateSecret={apiHasSecret ? () => onRegenerateSecret(a) : undefined}
+                onDelete={() => onDelete(a.id, a.name)}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -305,11 +339,13 @@ function AppCard({
   app,
   onEdit,
   onEndpoints,
+  onRegenerateSecret,
   onDelete,
 }: {
   app: Application;
   onEdit: () => void;
   onEndpoints?: () => void;
+  onRegenerateSecret?: () => void;
   onDelete: () => void;
 }) {
   const toast = useToast();
@@ -339,6 +375,15 @@ function AppCard({
               className="rounded-lg p-1.5 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-sky-300 group-hover:opacity-100"
             >
               <Link2 className="size-4" />
+            </button>
+          )}
+          {onRegenerateSecret && (
+            <button
+              onClick={onRegenerateSecret}
+              title="Regenerate client secret"
+              className="rounded-lg p-1.5 text-[var(--color-ink-dim)] opacity-0 transition hover:bg-white/10 hover:text-amber-300 group-hover:opacity-100"
+            >
+              <KeyRound className="size-4" />
             </button>
           )}
           <button
@@ -1106,6 +1151,8 @@ function RolesTab({ projectId }: { projectId: string }) {
   const [form, setForm] = useState({ roleKey: '', displayName: '', group: '' });
   const [editTarget, setEditTarget] = useState<ProjectRole | null>(null);
   const [editForm, setEditForm] = useState({ displayName: '', group: '' });
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const rolesQ = useQuery({
     queryKey: ['roles', projectId],
@@ -1156,11 +1203,65 @@ function RolesTab({ projectId }: { projectId: string }) {
     if (ok) deleteM.mutate(key);
   }
 
+  async function onDeleteSelected() {
+    const keys = roles.filter((r) => selectedKeys.has(r.key)).map((r) => r.key);
+    if (keys.length === 0) return;
+    const ok = await confirm({
+      title: `Remove ${keys.length} role${keys.length === 1 ? '' : 's'}`,
+      message: (
+        <>
+          Remove <strong className="text-white">{keys.length} role{keys.length === 1 ? '' : 's'}</strong>{' '}
+          from this project? Users holding these roles will lose them.
+        </>
+      ),
+      confirmLabel: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+    setDeletingSelected(true);
+    let failed = 0;
+    for (const key of keys) {
+      try {
+        await deleteRole(projectId, key);
+      } catch {
+        failed++;
+      }
+    }
+    setDeletingSelected(false);
+    setSelectedKeys(new Set());
+    qc.invalidateQueries({ queryKey: ['roles', projectId] });
+    if (failed === 0) toast.success(`${keys.length} role${keys.length === 1 ? '' : 's'} removed`);
+    else toast.error(`${failed} of ${keys.length} roles could not be removed`);
+  }
+
   const roles = rolesQ.data ?? [];
+
+  // Drop keys that no longer exist after refetch (e.g. just deleted).
+  useEffect(() => {
+    setSelectedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const alive = new Set(roles.map((r) => r.key).filter((k) => prev.has(k)));
+      return alive.size === prev.size ? prev : alive;
+    });
+  }, [rolesQ.data]);
 
   return (
     <>
       <div className="mb-3 flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Download className="size-4" />}
+          onClick={() =>
+            exportRoles(
+              roles,
+              `project-roles-${projectId}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+            )
+          }
+          disabled={roles.length === 0}
+        >
+          Export
+        </Button>
         <Button
           size="sm"
           variant="ghost"
@@ -1173,6 +1274,30 @@ function RolesTab({ projectId }: { projectId: string }) {
           Add Role
         </Button>
       </div>
+
+      {selectedKeys.size > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5">
+          <div className="text-sm text-rose-200">
+            <span className="font-semibold">{selectedKeys.size}</span> role
+            {selectedKeys.size === 1 ? '' : 's'} selected
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setSelectedKeys(new Set())}>
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Trash2 className="size-4" />}
+              loading={deletingSelected}
+              onClick={onDeleteSelected}
+              hint="POST project.v2/RemoveProjectRole (per selected role)"
+            >
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      )}
 
       {rolesQ.isLoading ? (
         <Spinner />
@@ -1193,8 +1318,33 @@ function RolesTab({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <div className="glass divide-y divide-white/8 p-0">
+          <div className="flex items-center gap-3 bg-white/[0.02] px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-ink-dim)]">
+            <input
+              type="checkbox"
+              checked={roles.length > 0 && roles.every((r) => selectedKeys.has(r.key))}
+              onChange={(e) => {
+                setSelectedKeys(e.target.checked ? new Set(roles.map((r) => r.key)) : new Set());
+              }}
+              className="size-4 cursor-pointer rounded border-white/10 bg-white/5 accent-[var(--color-accent)] focus:ring-0 focus:ring-offset-0"
+            />
+            <span className="flex-1">Role</span>
+            <span>Actions</span>
+          </div>
           {roles.map((r) => (
             <div key={r.key} className="group flex items-center gap-3 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={selectedKeys.has(r.key)}
+                onChange={(e) => {
+                  setSelectedKeys((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.add(r.key);
+                    else next.delete(r.key);
+                    return next;
+                  });
+                }}
+                className="size-4 shrink-0 cursor-pointer rounded border-white/10 bg-white/5 accent-[var(--color-accent)] focus:ring-0 focus:ring-offset-0"
+              />
               <Tag className="size-4 text-[var(--color-accent-2)]" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-white">{r.displayName || r.key}</p>
@@ -1275,6 +1425,7 @@ function RolesTab({ projectId }: { projectId: string }) {
         <BulkRolesModal
           projectId={projectId}
           existingKeys={roles.map((r) => r.key)}
+          roles={roles}
           onClose={() => setBulkOpen(false)}
           onDone={() => qc.invalidateQueries({ queryKey: ['roles', projectId] })}
         />
@@ -1337,11 +1488,13 @@ interface BulkRoleRow extends ParsedRoleRow {
 function BulkRolesModal({
   projectId,
   existingKeys,
+  roles,
   onClose,
   onDone,
 }: {
   projectId: string;
   existingKeys: string[];
+  roles: ProjectRole[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -1477,6 +1630,20 @@ function BulkRolesModal({
             onClick={downloadTemplate}
           >
             Template
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<Download className="size-4" />}
+            onClick={() =>
+              exportRoles(
+                roles,
+                `project-roles-${projectId}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+              )
+            }
+            disabled={roles.length === 0}
+          >
+            Export current ({roles.length})
           </Button>
           {fileName && (
             <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-dim)]">

@@ -265,3 +265,27 @@ export async function updateAPIApp(
     apiConfiguration: { authMethodType },
   }, { extraHeaders: { 'Connect-Protocol-Version': '1' } });
 }
+
+export interface RegenerateAPISecretResult {
+  appId: string;
+  clientId?: string;
+  clientSecret?: string;
+}
+
+/** Regenerates an API app's client secret (management v1 GenerateAPIClientSecret). */
+export async function regenerateAPIClientSecret(
+  projectId: string,
+  appId: string,
+  orgId?: string,
+): Promise<RegenerateAPISecretResult> {
+  const res = await api.post<Record<string, unknown>>(
+    EP.appGenerateAPISecret(projectId, appId),
+    undefined,
+    { orgId },
+  );
+  return {
+    appId,
+    clientId: res.clientId as string | undefined,
+    clientSecret: res.clientSecret as string | undefined,
+  };
+}

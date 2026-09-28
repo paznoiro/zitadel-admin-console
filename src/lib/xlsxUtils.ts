@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { User } from '../api/types';
+import type { ProjectRole, User } from '../api/types';
 
 export interface ProjectForTemplate {
   id: string;
@@ -176,6 +176,24 @@ export function generateRolesTemplate(): Blob {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Roles');
   return makeBlob(wb);
+}
+
+/**
+ * Export existing roles in the exact same column layout as the import
+ * template (`roleKey, displayName, group` on a `Roles` sheet), so an
+ * export can be edited and re-imported as-is.
+ */
+export function exportRoles(roles: ProjectRole[], filename = 'project-roles.xlsx') {
+  const data = [
+    ROLE_COLS.map((c) => c.header),
+    ...roles.map((r) => [r.key, r.displayName ?? '', r.group ?? '']),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = ROLE_COLS.map((c) => ({ wch: c.width }));
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 } as XLSX.ColInfo;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Roles');
+  downloadBlob(makeBlob(wb), filename);
 }
 
 function toRoleRow(

@@ -104,6 +104,10 @@ export const EP = {
     `/management/v1/projects/${projectId}/apps/${appId}/oidc`, // PUT
   appUpdateAPI: (projectId: string, appId: string) =>
     `/management/v1/projects/${projectId}/apps/${appId}/api`, // PUT
+  // Regenerate an API app's client secret (GenerateAPIClientSecret — no v2 equivalent).
+  // Returns { clientId, clientSecret }; the previous secret stops working immediately.
+  appGenerateAPISecret: (projectId: string, appId: string) =>
+    `/management/v1/projects/${projectId}/apps/${appId}/api/_generate`,
 
   // ---- Identity providers ----
   // List: v2beta settings API — returns all IDPs linked for login in an org.
