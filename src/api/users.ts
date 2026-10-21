@@ -47,9 +47,8 @@ export async function listUsers(params: ListUsersParams = {}): Promise<{
     queries.push({
       orQuery: {
         queries: [
-          // userIdQuery is an exact match — lets admins paste an ID straight
-          // into the search box, in addition to name / email / display name.
-          { userIdQuery: { userId: q } },
+          // v2 matches user IDs through an inclusion query, even for one ID.
+          { inUserIdsQuery: { userIds: [q] } },
           { userNameQuery: { userName: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
           { emailQuery: { emailAddress: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
           { displayNameQuery: { displayName: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
