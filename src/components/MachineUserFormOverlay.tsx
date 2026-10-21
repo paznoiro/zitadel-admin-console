@@ -13,6 +13,7 @@ import {
 import type { User, Project, ProjectRole } from '../api/types';
 import { Button, Field, Input, Spinner, ErrorBox } from './ui';
 import { useToast } from './Toast';
+import { CopyRow } from './CopyRow';
 
 type LocalGrant = {
   id?: string;        // set for grants already in ZITADEL; undefined for new ones
@@ -267,6 +268,10 @@ export function MachineUserFormOverlay({
                 placeholder="Optional description"
               />
             </Field>
+
+            {isEdit && user && (
+              <CopyRow label="User ID" value={user.userId} />
+            )}
           </div>
 
           {/* Right panel: Roles assignment */}

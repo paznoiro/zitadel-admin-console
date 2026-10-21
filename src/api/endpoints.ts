@@ -150,6 +150,16 @@ export const EP = {
   // management v1 GenerateMachineSecret fallback (returns clientId + clientSecret)
   userSecretV1: (userId: string) => `/management/v1/users/${userId}/secret`,
 
+  // Second factors / MFA (user.v2). Removal of each factor is DELETE on the
+  // factor resource; auth methods are listed with a dedicated GET.
+  userAuthMethods: (userId: string) => `/v2/users/${userId}/authentication_methods`, // GET
+  userListPasskeys: (userId: string) => `/v2/users/${userId}/passkeys/_search`, // POST
+  userRemovePasskey: (userId: string, passkeyId: string) =>
+    `/v2/users/${userId}/passkeys/${passkeyId}`, // DELETE
+  userRemoveTOTP: (userId: string) => `/v2/users/${userId}/totp`, // DELETE
+  userRemoveOtpEmail: (userId: string) => `/v2/users/${userId}/otp_email`, // DELETE
+  userRemoveOtpSms: (userId: string) => `/v2/users/${userId}/otp_sms`, // DELETE
+
   // ---- Authorization service (zitadel.authorization.v2 Connect RPC) ----
   authorizationList: () => `/zitadel.authorization.v2.AuthorizationService/ListAuthorizations`,
   authorizationCreate: () => `/zitadel.authorization.v2.AuthorizationService/CreateAuthorization`,

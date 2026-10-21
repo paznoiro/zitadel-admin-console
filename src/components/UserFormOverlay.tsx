@@ -1,8 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Shield, Check } from 'lucide-react';
-import { addHumanUser, updateHumanUser, setUserPassword } from '../api/users';
+import { X, Shield, Check, Trash2, Loader2, Fingerprint } from 'lucide-react';
+import {
+  addHumanUser,
+  updateHumanUser,
+  setUserPassword,
+  getUser,
+  listUserAuthMethods,
+  listUserPasskeys,
+  removeUserTOTP,
+  removeUserOtpEmail,
+  removeUserOtpSms,
+  removeUserPasskey,
+  type UserPasskey,
+} from '../api/users';
 import { listProjects, listRoles } from '../api/projects';
 import {
   listUserGrants,
@@ -14,6 +26,8 @@ import type { User } from '../api/types';
 import type { Project, ProjectRole } from '../api/types';
 import { Button, Field, Input, Spinner, ErrorBox } from './ui';
 import { useToast } from './Toast';
+import { useConfirm } from './Confirm';
+import { CopyRow } from './CopyRow';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +49,81 @@ type ProfileForm = {
   changeRequired: boolean;
 };
 
+// ── Multi-factor auth rows ───────────────────────────────────────────────────
+// Built from GET /v2/users/{id}/authentication_methods (+ passkeys search for
+// ids). `target` is what a Remove button calls; null = display-only.
+
+type MfaTarget = 'totp' | 'otp_email' | 'otp_sms' | 'passkey';
+
+type MfaRow = {
+  key: string;
+  label: string;
+  /** Shown as a monospace sub-line — e.g. the passkey id. */
+  sub?: string;
+  target?: MfaTarget;
+  passkeyId?: string;
+  hint?: string | string[];
+};
+
+const MFA_LABELS: Record<string, { label: string; hint: string }> = {
+  AUTHENTICATION_METHOD_TYPE_TOTP: {
+    label: 'TOTP (authenticator app)',
+    hint: 'DELETE /v2/users/{id}/totp',
+  },
+  AUTHENTICATION_METHOD_TYPE_OTP_EMAIL: {
+    label: 'OTP via email',
+    hint: 'DELETE /v2/users/{id}/otp_email',
+  },
+  AUTHENTICATION_METHOD_TYPE_OTP_SMS: {
+    label: 'OTP via SMS',
+    hint: 'DELETE /v2/users/{id}/otp_sms',
+  },
+  AUTHENTICATION_METHOD_TYPE_U2F: {
+    label: 'U2F token',
+    hint: 'Remove via ZITADEL console (v2 lists no U2F id)',
+  },
+  AUTHENTICATION_METHOD_TYPE_RECOVERY_CODE: {
+    label: 'Recovery codes',
+    hint: 'Self-managed by the user',
+  },
+};
+
+function buildMfaRows(
+  methods: string[] | undefined,
+  passkeys: UserPasskey[] | undefined,
+  passkeysLoading: boolean,
+): MfaRow[] {
+  if (!methods) return [];
+  const rows: MfaRow[] = [];
+
+  if (methods.includes('AUTHENTICATION_METHOD_TYPE_PASSKEY')) {
+    if (passkeys && passkeys.length > 0) {
+      passkeys.forEach((pk) =>
+        rows.push({
+          key: `passkey:${pk.id}`,
+          label: pk.name ?? 'Passkey',
+          sub: pk.id,
+          target: 'passkey',
+          passkeyId: pk.id,
+          hint: `DELETE /v2/users/{id}/passkeys/${pk.id}`,
+        }),
+      );
+    } else if (passkeysLoading) {
+      rows.push({ key: 'passkey:loading', label: 'Passkey' });
+    } else {
+      // Method reported but no passkey id available — cannot remove without it.
+      rows.push({ key: 'passkey:none', label: 'Passkey (id unavailable)' });
+    }
+  }
+
+  for (const [type, meta] of Object.entries(MFA_LABELS)) {
+    if (methods.includes(type)) {
+      rows.push({ key: type, label: meta.label, hint: meta.hint });
+    }
+  }
+  return rows;
+}
+
 // ── Main overlay ──────────────────────────────────────────────────────────────
 
 export function UserFormOverlay({
@@ -50,6 +139,7 @@ export function UserFormOverlay({
 }) {
   const isEdit = !!user;
   const toast = useToast();
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [mounted, setMounted] = useState(false);
 
@@ -86,6 +176,28 @@ export function UserFormOverlay({
   const projectsQ = useQuery({
     queryKey: ['projects', orgId],
     queryFn: () => listProjects(undefined, orgId),
+  });
+
+  // ── Full user details (edit mode) ────────────────────────────────────────
+  // The list view ships most fields, but GetUserByID is authoritative and the
+  // only place all details (created/changed, resource owner) come through.
+  const detailQ = useQuery({
+    queryKey: ['user', user?.userId],
+    queryFn: () => getUser(user!.userId),
+    enabled: isEdit,
+  });
+  const fullUser = detailQ.data ?? user;
+
+  // ── Multi-factor auth (edit mode) ────────────────────────────────────────
+  const authMethodsQ = useQuery({
+    queryKey: ['userAuthMethods', user?.userId],
+    queryFn: () => listUserAuthMethods(user!.userId),
+    enabled: isEdit,
+  });
+  const passkeysQ = useQuery({
+    queryKey: ['userPasskeys', user?.userId],
+    queryFn: () => listUserPasskeys(user!.userId),
+    enabled: isEdit && !!authMethodsQ.data?.includes('AUTHENTICATION_METHOD_TYPE_PASSKEY'),
   });
 
   // Seed localGrants from server (edit mode only, once)
@@ -131,6 +243,48 @@ export function UserFormOverlay({
       }
       return [...prev, { projectId, projectName, roleKeys: [roleKey] }];
     });
+  }
+
+  // ── Remove an MFA factor ──────────────────────────────────────────────────
+
+  const removeM = useMutation({
+    mutationFn: async (row: MfaRow) => {
+      switch (row.target) {
+        case 'totp':
+          return removeUserTOTP(user!.userId);
+        case 'otp_email':
+          return removeUserOtpEmail(user!.userId);
+        case 'otp_sms':
+          return removeUserOtpSms(user!.userId);
+        case 'passkey':
+          return removeUserPasskey(user!.userId, row.passkeyId!);
+        default:
+          return undefined;
+      }
+    },
+    onSuccess: (_res, row) => {
+      toast.success(`${row.label} removed`);
+      qc.invalidateQueries({ queryKey: ['userAuthMethods', user?.userId] });
+      qc.invalidateQueries({ queryKey: ['userPasskeys', user?.userId] });
+    },
+    onError: (e: Error) => toast.error('Could not remove factor', e.message),
+  });
+
+  async function onRemoveMfa(row: MfaRow) {
+    if (!user || !row.target) return;
+    const ok = await confirm({
+      title: `Remove ${row.label}?`,
+      message: (
+        <>
+          Remove this second factor from{' '}
+          <strong className="text-white">{userName || 'this user'}</strong>? They lose the factor
+          immediately and have to re-enroll to use it again.
+        </>
+      ),
+      confirmLabel: 'Remove',
+      danger: true,
+    });
+    if (ok) removeM.mutate(row);
   }
 
   // ── Save ───────────────────────────────────────────────────────────────────
@@ -212,6 +366,9 @@ export function UserFormOverlay({
     : '';
 
   const totalAssigned = localGrants.reduce((n, g) => n + g.roleKeys.length, 0);
+  // Second-factor rows for the MFA section (edit mode only).
+  const mfaRows = buildMfaRows(authMethodsQ.data, passkeysQ.data, passkeysQ.isLoading);
+  const removingKey = removeM.isPending ? (removeM.variables as MfaRow | undefined)?.key : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -294,6 +451,8 @@ export function UserFormOverlay({
             borderRight: '1px solid rgba(255,255,255,0.07)',
             display: 'flex', flexDirection: 'column', gap: 14,
           }}>
+            {isEdit && fullUser && <UserDetailsCard user={fullUser} />}
+
             <Label>Profile</Label>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -360,6 +519,15 @@ export function UserFormOverlay({
               <Input value={form.phone} placeholder="+15550100"
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
             </Field>
+
+            {isEdit && (
+              <MfaSection
+                rows={mfaRows}
+                loading={authMethodsQ.isLoading}
+                busyKey={removingKey}
+                onRemove={onRemoveMfa}
+              />
+            )}
           </div>
 
           {/* Right — Role assignments (all projects shown immediately) */}
@@ -652,5 +820,173 @@ function VerifiedCheckbox({ checked, isEdit, onChange }: { checked: boolean; isE
       />
       {isEdit ? 'Mark new email as verified' : 'Mark email as verified'}
     </label>
+  );
+}
+
+// ── UserDetailsCard ───────────────────────────────────────────────────────────
+// Read-only identity facts for the user being edited (GET /v2/users/{id}).
+// Empty fields are skipped; the user id gets a prominent copy row.
+
+function UserDetailsCard({ user }: { user: User }) {
+  const profile = user.human?.profile;
+  const email = user.human?.email;
+  const phone = user.human?.phone;
+  const details = user.details;
+  const active = (user.state ?? '') === 'USER_STATE_ACTIVE';
+
+  return (
+    <div style={{
+      borderRadius: 14,
+      border: '1px solid rgba(124,92,255,0.22)',
+      background: 'rgba(124,92,255,0.05)',
+      padding: '14px 16px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <Label>User Details</Label>
+        {user.state && (
+          <span style={{
+            fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
+            padding: '2px 9px', borderRadius: 100,
+            border: `1px solid ${active ? 'rgba(52,211,153,0.35)' : 'rgba(251,191,36,0.35)'}`,
+            color: active ? 'rgba(52,211,153,0.95)' : 'rgba(251,191,36,0.95)',
+          }}>
+            {user.state.replace('USER_STATE_', '')}
+          </span>
+        )}
+      </div>
+
+      {/* The ID admins need for API calls and the User-ID filter — copyable. */}
+      <CopyRow label="User ID" value={user.userId} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <DetailRow label="Username">{user.username}</DetailRow>
+        <DetailRow label="Login name">{user.preferredLoginName ?? user.loginNames?.join(', ')}</DetailRow>
+        <DetailRow label="Display name">{profile?.displayName}</DetailRow>
+        <DetailRow label="Nick name">{profile?.nickName}</DetailRow>
+        <DetailRow label="Email" extra={email?.email ? <VerifiedChip ok={email.isVerified} /> : undefined}>
+          {email?.email}
+        </DetailRow>
+        <DetailRow label="Phone" extra={phone?.phone ? <VerifiedChip ok={phone.isVerified} /> : undefined}>
+          {phone?.phone}
+        </DetailRow>
+        <DetailRow label="Preferred language">{profile?.preferredLanguage}</DetailRow>
+        <DetailRow label="Gender">{profile?.gender?.startsWith('GENDER_') ? profile.gender.slice(7) : profile?.gender}</DetailRow>
+        <DetailRow label="Created">{fmtDate(details?.creationDate)}</DetailRow>
+        <DetailRow label="Last changed">{fmtDate(details?.changeDate)}</DetailRow>
+        <DetailRow label="Resource owner">{details?.resourceOwner}</DetailRow>
+        <DetailRow label="Sequence">{details?.sequence}</DetailRow>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, children, extra }: { label: string; children?: ReactNode; extra?: ReactNode }) {
+  const value = children !== undefined && children !== null && children !== '' ? children : null;
+  if (!value && !extra) return null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, fontSize: 12.5, lineHeight: 1.45 }}>
+      <span style={{ flexShrink: 0, color: 'var(--color-ink-dim)' }}>{label}</span>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: 'var(--color-ink)', overflowWrap: 'anywhere', textAlign: 'right', minHeight: 16 }}>
+        {value ?? '—'}
+        {extra}
+      </span>
+    </div>
+  );
+}
+
+function VerifiedChip({ ok }: { ok?: boolean }) {
+  return (
+    <span style={{
+      flexShrink: 0, fontSize: 10, fontWeight: 600, letterSpacing: '0.04em',
+      padding: '1px 7px', borderRadius: 100,
+      border: `1px solid ${ok ? 'rgba(52,211,153,0.35)' : 'rgba(251,191,36,0.35)'}`,
+      color: ok ? 'rgba(52,211,153,0.95)' : 'rgba(251,191,36,0.95)',
+    }}>
+      {ok ? 'verified' : 'unverified'}
+    </span>
+  );
+}
+
+function fmtDate(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? undefined : d.toLocaleString();
+}
+
+// ── MfaSection ────────────────────────────────────────────────────────────────
+// Lists every second factor the user has (TOTP / OTP / passkeys / U2F /
+// recovery codes) with a Remove action for what the v2 API can delete.
+
+function MfaSection({
+  rows,
+  loading,
+  busyKey,
+  onRemove,
+}: {
+  rows: MfaRow[];
+  loading: boolean;
+  busyKey?: string | null;
+  onRemove: (row: MfaRow) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Label>Multi-Factor Auth (MFA)</Label>
+      <p style={{ margin: '-4px 0 0', fontSize: 12, color: 'rgba(154,163,199,0.6)', lineHeight: 1.5 }}>
+        Everything the user has enrolled as a second factor. Remove one if it&apos;s lost and needs re-enrollment.
+      </p>
+
+      {loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--color-ink-dim)' }}>
+          <Loader2 size={13} className="animate-spin" /> Checking factors…
+        </div>
+      ) : rows.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--color-ink-dim)', fontStyle: 'italic' }}>
+          No second factors (TOTP, OTP, passkeys) configured.
+        </p>
+      ) : (
+        rows.map((row) => (
+          <div key={row.key} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 12px',
+            borderRadius: 12,
+            border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(255,255,255,0.03)',
+          }}>
+            <Fingerprint size={14} style={{ color: 'rgba(124,92,255,0.8)', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: 'var(--color-ink)' }}>{row.label}</p>
+              {row.sub && (
+                <p style={{
+                  margin: 0, fontSize: 11, fontFamily: 'monospace',
+                  color: 'var(--color-ink-dim)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {row.sub}
+                </p>
+              )}
+            </div>
+            {row.target && (
+              <button
+                onClick={() => onRemove(row)}
+                title={`Remove ${row.label}`}
+                disabled={!!busyKey}
+                style={{
+                  padding: 6, borderRadius: 8, border: 'none',
+                  background: busyKey === row.key ? 'rgba(244,63,94,0.15)' : 'transparent',
+                  cursor: 'pointer', color: 'var(--color-ink-dim)', display: 'flex', flexShrink: 0,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.12)'; (e.currentTarget as HTMLElement).style.color = '#fb7185'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = busyKey === row.key ? 'rgba(244,63,94,0.15)' : 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--color-ink-dim)'; }}
+              >
+                {busyKey === row.key
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <Trash2 size={14} />}
+              </button>
+            )}
+          </div>
+        ))
+      )}
+    </div>
   );
 }

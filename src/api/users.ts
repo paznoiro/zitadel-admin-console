@@ -43,12 +43,16 @@ export async function listUsers(params: ListUsersParams = {}): Promise<{
     queries.push({ typeQuery: { type: 'TYPE_MACHINE' } });
   }
   if (params.query?.trim()) {
+    const q = params.query.trim();
     queries.push({
       orQuery: {
         queries: [
-          { userNameQuery: { userName: params.query.trim(), method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
-          { emailQuery: { emailAddress: params.query.trim(), method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
-          { displayNameQuery: { displayName: params.query.trim(), method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
+          // userIdQuery is an exact match — lets admins paste an ID straight
+          // into the search box, in addition to name / email / display name.
+          { userIdQuery: { userId: q } },
+          { userNameQuery: { userName: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
+          { emailQuery: { emailAddress: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
+          { displayNameQuery: { displayName: q, method: 'TEXT_QUERY_METHOD_CONTAINS_IGNORE_CASE' } },
         ],
       },
     });
@@ -242,4 +246,70 @@ export async function makeUserOrgAdmin(userId: string, orgId: string): Promise<v
     },
     roles: ["ORG_OWNER"]
   });
+}
+
+// ── User details / MFA (user.v2) ─────────────────────────────────────────────
+
+/**
+ * Full user record via GetUserByID (GET /v2/users/{id}) — profile, verified
+ * flags and details (creation date, change date, resource owner). Returns
+ * undefined on failure; callers fall back to the lighter list-view data.
+ */
+export async function getUser(userId: string): Promise<User | undefined> {
+  try {
+    const res = await api.get<Record<string, unknown>>(EP.userGet(userId));
+    const raw = (res.user ?? res) as Record<string, unknown> | undefined;
+    return raw && typeof raw === 'object' ? normalizeUser(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Authentication methods a user has configured (password, passkey, TOTP,
+ * OTP email/SMS, U2F, recovery codes) — raw enums like
+ * `AUTHENTICATION_METHOD_TYPE_TOTP`.
+ */
+export async function listUserAuthMethods(userId: string): Promise<string[]> {
+  const res = await api.get<{ authMethodTypes?: string[] }>(EP.userAuthMethods(userId));
+  return res.authMethodTypes ?? [];
+}
+
+export interface UserPasskey {
+  id: string;
+  name?: string;
+  state?: string;
+}
+
+/** Registered passkeys of a user (ListPasskeys — each has the id removal needs). */
+export async function listUserPasskeys(userId: string): Promise<UserPasskey[]> {
+  const res = await api.post<{ result?: Array<Record<string, unknown>> }>(
+    EP.userListPasskeys(userId),
+    {},
+  );
+  return (res.result ?? []).map((p) => ({
+    id: String(p.id ?? ''),
+    name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : undefined,
+    state: typeof p.state === 'string' ? p.state : undefined,
+  }));
+}
+
+/** Removes the user's TOTP generator (authenticator app) — second factor. */
+export async function removeUserTOTP(userId: string): Promise<void> {
+  await api.delete(EP.userRemoveTOTP(userId));
+}
+
+/** Removes the user's OTP-via-email second factor. */
+export async function removeUserOtpEmail(userId: string): Promise<void> {
+  await api.delete(EP.userRemoveOtpEmail(userId));
+}
+
+/** Removes the user's OTP-via-SMS second factor. */
+export async function removeUserOtpSms(userId: string): Promise<void> {
+  await api.delete(EP.userRemoveOtpSms(userId));
+}
+
+/** Removes a specific passkey (per passkey id from ListPasskeys). */
+export async function removeUserPasskey(userId: string, passkeyId: string): Promise<void> {
+  await api.delete(EP.userRemovePasskey(userId, passkeyId));
 }

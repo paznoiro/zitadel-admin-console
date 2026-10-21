@@ -6,6 +6,8 @@ built entirely against the **v2 / v2beta resource APIs** (no v1 management API).
 You point it at any ZITADEL instance, paste a Personal Access Token (PAT), and the
 browser talks to that instance directly — there is no backend of our own.
 
+> Live deployment: **[https://zitadel.authkeystone.com](https://zitadel.authkeystone.com)**
+
 ![stack](https://img.shields.io/badge/React-18-61dafb) ![stack](https://img.shields.io/badge/Vite-6-646cff) ![stack](https://img.shields.io/badge/Tailwind-4-38bdf8)
 
 ---
@@ -20,7 +22,7 @@ browser talks to that instance directly — there is no backend of our own.
 | **Projects** | Create / delete projects (role-assertion & role-check flags), per-org scoped. |
 | **Applications** | Register **OIDC** (Web / SPA / Native) and **API** apps; view fresh client credentials once; aggregated cross-project list. |
 | **Roles** | Add / remove project roles (key, display name, group). |
-| **Users** | List / search / create human users; activate / deactivate / delete. |
+| **Users** | List / filter by name, username, email **or user ID**; create human users; activate / deactivate / delete; full user details (incl. user ID) in the editor; **remove MFA factors** (TOTP, OTP email/SMS, passkeys). |
 | **Bulk import** | Drag-and-drop a CSV to create many users with per-row live status. |
 | **Duplicate organization** | Deep-clone an org → new org + all projects + roles + apps, with a real-time progress log. |
 
